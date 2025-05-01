@@ -5,15 +5,24 @@ from pycalphad import Database, binplot, Workspace, equilibrium, calculate
 from pycalphad.property_framework.metaproperties import IsolatedPhase
 import pycalphad.variables as v
 import numpy as np
+import time
 
 # Make sure the outputs directory exists
 if not os.path.exists("outputs"):
     os.makedirs("outputs")
 
+# Initialize timing dictionary
+timing = {}
+
+# Start timing the database loading
+start_time = time.time()
 # Load the database and choose what phases will be considered (in this case all)
 db_al_ti = Database("TiAl.TDB")
 phases = db_al_ti.phases.keys()
+timing["database_loading"] = time.time() - start_time
 
+# Start timing phase diagram computation
+start_time = time.time()
 # Create figure
 fig = plt.figure(figsize=(9, 6))
 axes = fig.gca()
@@ -30,7 +39,8 @@ binplot(
 # Save plot
 plt.tight_layout()
 plt.savefig("outputs/phase_diagram.png", dpi=300)
-plt.clf()
+plt.close(fig)
+timing["phase_diagram"] = time.time() - start_time
 
 # Nominal composition (mol fraction)
 composition = 0.00823
@@ -105,7 +115,9 @@ def compute_ECP_driving_force(base_driving_force, current_density):
     # Calculating the change in free energy from Dolinsky
     dG = -4 * p_m * xi * V_m  # J/mol
 
-    print(f"Bulk work in creating new nuclei: {-dG} J/mol")
+    print(
+        f"Bulk work in creating new nuclei with current density {current_density} A/m^2: {-dG} J/mol"
+    )
 
     # I assume that the change is free energy is equal for the entire temperature
     # range.
@@ -130,10 +142,6 @@ def compute_net_driving_force(bulk_driving_force, surface_energy):
         4 / 3 * np.pi * r_star**3 * bulk_driving_force
         + 4 * np.pi * r_star**2 * surface_energy
     )
-
-    print(f"Critical radii (m): {r_star}")
-    print(f"Critical energy (eV): {G_star * 6.242 * 10**18}")
-
     return G_star
 
 
@@ -146,12 +154,8 @@ def molar_to_volumetric_driving_force(molar_driving_force, molar_volume):
 def compute_nucleation_rate_estimate(free_energy, temperature):
     # The free_energy should have units of J and the temperature should have units
     # of K
-
     free_energy = free_energy * 6.242 * 10**18  # eV
     kb_boltzmann = 8.617333 * 10**-5  # eV/K
-
-    print(f"Exponent value: {-free_energy / (kb_boltzmann * temperature)}")
-
     return np.exp(-free_energy / (kb_boltzmann * temperature))
 
 
@@ -253,6 +257,8 @@ def compute_driving_force(driving_force, temperature=1123):
 
 dump_file_name = f"outputs/bulk_driving_force_{composition}_mol_frac.pkl"
 
+# Start timing driving force computation
+start_time = time.time()
 if os.path.exists(dump_file_name):
     # Load the serialized data
     with open(dump_file_name, "rb") as f:
@@ -271,7 +277,10 @@ else:
     with open(dump_file_name, "wb") as f:
         pickle.dump(bulk_driving_force, f)
     print("Computed and saved bulk_driving_force to dump file.")
+timing["driving_force_computation"] = time.time() - start_time
 
+# Start timing plotting
+start_time = time.time()
 # Plot the bulk energy driving forces
 plot_bulk_driving_forces(temperatures, bulk_driving_force)
 
@@ -286,15 +295,13 @@ mask = (bulk_driving_force >= 0) & (temperatures > 0)
 bulk_driving_force = bulk_driving_force[mask]
 temperatures = temperatures[mask]
 
-print(f"Temperature (K): {temperatures}")
-
 net_driving_force = compute_net_driving_force(-bulk_driving_force, base_surface_energy)
 plt.clf()
 plt.plot(temperatures, net_driving_force, "-o", label="No current")
 plt.xlabel("Temperature [K]")
 plt.ylabel("Driving Force [J]")
 plt.savefig("outputs/net_driving_force.png", dpi=300)
-
+plt.close()
 
 estimate_nucleation_rate = compute_nucleation_rate_estimate(
     net_driving_force, temperatures
@@ -304,3 +311,12 @@ plt.plot(temperatures, estimate_nucleation_rate, "-o", label="No current")
 plt.xlabel("Temperature [K]")
 plt.ylabel("Estimated nucleation rate (Arrhenius)")
 plt.savefig("outputs/nucleation_rate.png", dpi=300)
+plt.close()
+timing["plotting"] = time.time() - start_time
+
+# Print timing results
+print("\nTiming Results:")
+print("---------------")
+for section, duration in timing.items():
+    print(f"{section}: {duration:.2f} seconds")
+print(f"Total time: {sum(timing.values()):.2f} seconds")
