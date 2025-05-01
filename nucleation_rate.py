@@ -6,6 +6,10 @@ from pycalphad.property_framework.metaproperties import IsolatedPhase
 import pycalphad.variables as v
 import numpy as np
 
+# Make sure the outputs directory exists
+if not os.path.exists("outputs"):
+    os.makedirs("outputs")
+
 # Load the database and choose what phases will be considered (in this case all)
 db_al_ti = Database("TiAl.TDB")
 phases = db_al_ti.phases.keys()
@@ -25,7 +29,7 @@ binplot(
 
 # Save plot
 plt.tight_layout()
-plt.savefig("phase_diagram.png", dpi=300)
+plt.savefig("outputs/phase_diagram.png", dpi=300)
 plt.clf()
 
 # Nominal composition (mol fraction)
@@ -73,7 +77,7 @@ def plot_bulk_driving_forces(temperatures, driving_force):
     plt.ylabel("Bulk Driving Force [J/mol]", fontsize=16)
     plt.legend(fontsize=14)
     plt.tight_layout()
-    plt.savefig("bulk_driving_force.png", dpi=300)
+    plt.savefig("outputs/bulk_driving_force.png", dpi=300)
 
 
 def compute_ECP_driving_force(base_driving_force, current_density):
@@ -114,9 +118,9 @@ def compute_net_driving_force(bulk_driving_force, surface_energy):
     # Make sure that bulk_driving_force has units of J/m^3 and surface_energy
     # has units of J/m^2.
     assert np.all(bulk_driving_force <= 0), "Bulk driving force should be all negative."
-    assert np.all(
-        surface_energy > 0
-    ), "Surface energies should all be positive and nonzero"
+    assert np.all(surface_energy > 0), (
+        "Surface energies should all be positive and nonzero"
+    )
 
     # First we have to determine the critical free energy (that of the saddle point)
     # For simplicity, we'll start with the critical radius, assuming a perfectly
@@ -128,7 +132,7 @@ def compute_net_driving_force(bulk_driving_force, surface_energy):
     )
 
     print(f"Critical radii (m): {r_star}")
-    print(f"Critical energy (eV): {G_star*6.242*10**18}")
+    print(f"Critical energy (eV): {G_star * 6.242 * 10**18}")
 
     return G_star
 
@@ -146,7 +150,7 @@ def compute_nucleation_rate_estimate(free_energy, temperature):
     free_energy = free_energy * 6.242 * 10**18  # eV
     kb_boltzmann = 8.617333 * 10**-5  # eV/K
 
-    print(f"Exponent value: {-free_energy/(kb_boltzmann*temperature)}")
+    print(f"Exponent value: {-free_energy / (kb_boltzmann * temperature)}")
 
     return np.exp(-free_energy / (kb_boltzmann * temperature))
 
@@ -241,13 +245,13 @@ def compute_driving_force(driving_force, temperature=1123):
     driving_force.append(supersaturated_free_energy - equilibrium_free_energy)
     ax.legend()
     plt.savefig(
-        f"temp_dependent_energy_{composition}_mol_frac/free_energy_{temperature}.png",
+        f"outputs/temp_dependent_energy_{composition}_mol_frac/free_energy_{temperature}.png",
         dpi=300,
     )
-    plt.clf()
+    plt.close(fig)
 
 
-dump_file_name = f"bulk_driving_force_{composition}_mol_frac.pkl"
+dump_file_name = f"outputs/bulk_driving_force_{composition}_mol_frac.pkl"
 
 if os.path.exists(dump_file_name):
     # Load the serialized data
@@ -258,8 +262,8 @@ else:
     bulk_driving_force = []
 
     # Create folder for temperature dependent free energy plots
-    if not os.path.exists(f"temp_dependent_energy_{composition}_mol_frac"):
-        os.makedirs(f"temp_dependent_energy_{composition}_mol_frac")
+    if not os.path.exists(f"outputs/temp_dependent_energy_{composition}_mol_frac"):
+        os.makedirs(f"outputs/temp_dependent_energy_{composition}_mol_frac")
 
     for temperature in temperatures:
         compute_driving_force(bulk_driving_force, temperature)
@@ -289,7 +293,7 @@ plt.clf()
 plt.plot(temperatures, net_driving_force, "-o", label="No current")
 plt.xlabel("Temperature [K]")
 plt.ylabel("Driving Force [J]")
-plt.savefig("net_driving_force.png", dpi=300)
+plt.savefig("outputs/net_driving_force.png", dpi=300)
 
 
 estimate_nucleation_rate = compute_nucleation_rate_estimate(
@@ -299,4 +303,4 @@ plt.clf()
 plt.plot(temperatures, estimate_nucleation_rate, "-o", label="No current")
 plt.xlabel("Temperature [K]")
 plt.ylabel("Estimated nucleation rate (Arrhenius)")
-plt.savefig("nucleation_rate.png", dpi=300)
+plt.savefig("outputs/nucleation_rate.png", dpi=300)
