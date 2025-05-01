@@ -6,6 +6,7 @@ from pycalphad.property_framework.metaproperties import IsolatedPhase
 import pycalphad.variables as v
 import numpy as np
 import time
+from multiprocessing import Pool, cpu_count
 
 # Make sure the outputs directory exists
 if not os.path.exists("outputs"):
@@ -167,17 +168,25 @@ def compute_driving_force(driving_force, temperature=1123):
         ["DO22_XAL3", "LIQUID"],
         {v.X("TI"): (0, 0.3, 0.005), v.T: temperature, v.P: pressure, v.N: 1},
     )
+
     fig = plt.figure()
     ax = fig.add_subplot()
     x = al3ti_workspace.get(v.X("TI"))
     ax.set_xlabel(f"{v.X('TI').display_name} [{v.X('TI').display_units}]")
-    for phase_name in al3ti_workspace.phases:
-        # Workaround for poor starting point selection in IsolatedPhase
-        metastable_wks = al3ti_workspace.copy()
-        metastable_wks.phases = [phase_name]
-        prop = IsolatedPhase(phase_name, metastable_wks)(f"GM({phase_name})")
-        prop.display_name = f"GM({phase_name})"
+
+    # Cache phase calculations
+    if not hasattr(compute_driving_force, "phase_calculations"):
+        compute_driving_force.phase_calculations = {}
+        for phase_name in al3ti_workspace.phases:
+            metastable_wks = al3ti_workspace.copy()
+            metastable_wks.phases = [phase_name]
+            prop = IsolatedPhase(phase_name, metastable_wks)(f"GM({phase_name})")
+            prop.display_name = f"GM({phase_name})"
+            compute_driving_force.phase_calculations[phase_name] = prop
+
+    for phase_name, prop in compute_driving_force.phase_calculations.items():
         ax.plot(x, al3ti_workspace.get(prop), label=prop.display_name)
+
     ax.axvline(composition, linestyle="--", color="black", label="Nominal composition")
 
     # Calculating the phase equilibria
@@ -194,13 +203,27 @@ def compute_driving_force(driving_force, temperature=1123):
     )
     supersaturated_free_energy = None
 
-    # Calculating the free energy curves
-    calculate_result_al3ti = calculate(
-        db_al_ti, ["AL", "TI", "VA"], "DO22_XAL3", P=pressure, T=temperature
-    )
-    calculate_result_liquid = calculate(
-        db_al_ti, ["AL", "TI", "VA"], "LIQUID", P=pressure, T=temperature
-    )
+    # Cache the calculation results
+    if not hasattr(compute_driving_force, "cached_calculations"):
+        compute_driving_force.cached_calculations = {}
+
+    # Only cache if we haven't seen this temperature before
+    if temperature not in compute_driving_force.cached_calculations:
+        compute_driving_force.cached_calculations[temperature] = {
+            "al3ti": calculate(
+                db_al_ti, ["AL", "TI", "VA"], "DO22_XAL3", P=pressure, T=temperature
+            ),
+            "liquid": calculate(
+                db_al_ti, ["AL", "TI", "VA"], "LIQUID", P=pressure, T=temperature
+            ),
+        }
+
+    calculate_result_al3ti = compute_driving_force.cached_calculations[temperature][
+        "al3ti"
+    ]
+    calculate_result_liquid = compute_driving_force.cached_calculations[temperature][
+        "liquid"
+    ]
 
     # Plot the point for the equilbria compositions
     for equilbrium_point in (
@@ -255,6 +278,13 @@ def compute_driving_force(driving_force, temperature=1123):
     plt.close(fig)
 
 
+def compute_driving_force_for_temperature(temperature):
+    """Helper function for parallel computation of driving force at a single temperature"""
+    driving_force = []
+    compute_driving_force(driving_force, temperature)
+    return driving_force[0]  # Return just the value since we're computing one at a time
+
+
 dump_file_name = f"outputs/bulk_driving_force_{composition}_mol_frac.pkl"
 
 # Start timing driving force computation
@@ -265,14 +295,18 @@ if os.path.exists(dump_file_name):
         bulk_driving_force = pickle.load(f)
     print("Loaded bulk_driving_force from dump file.")
 else:
-    bulk_driving_force = []
-
     # Create folder for temperature dependent free energy plots
     if not os.path.exists(f"outputs/temp_dependent_energy_{composition}_mol_frac"):
         os.makedirs(f"outputs/temp_dependent_energy_{composition}_mol_frac")
 
-    for temperature in temperatures:
-        compute_driving_force(bulk_driving_force, temperature)
+    # Use multiprocessing to parallelize the temperature loop
+    num_processes = cpu_count()  # Use all available CPU cores
+    print(f"Using {num_processes} processes for parallel computation")
+
+    with Pool(processes=num_processes) as pool:
+        bulk_driving_force = pool.map(
+            compute_driving_force_for_temperature, temperatures
+        )
 
     with open(dump_file_name, "wb") as f:
         pickle.dump(bulk_driving_force, f)
@@ -320,3 +354,7 @@ print("---------------")
 for section, duration in timing.items():
     print(f"{section}: {duration:.2f} seconds")
 print(f"Total time: {sum(timing.values()):.2f} seconds")
+
+# Initialize the cache attributes
+compute_driving_force.phase_calculations = {}
+compute_driving_force.cached_calculations = {}
