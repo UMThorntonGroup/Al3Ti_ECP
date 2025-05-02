@@ -8,7 +8,7 @@ import numpy as np
 import time
 from multiprocessing import Pool, cpu_count
 
-# Constants
+# Global constants
 COMPOSITION = 0.00823  # mol fraction
 TEMPERATURES = np.arange(600, 1300, 5)  # K
 PRESSURE = 101325  # Pa
@@ -32,6 +32,32 @@ def load_database():
     db_al_ti = Database("TiAl.TDB")
     phases = db_al_ti.phases.keys()
     return db_al_ti, phases
+
+
+def compute_relative_nucleation_rate(
+    current_density_1, current_density_2, average_radius_1, average_radius_2
+):
+    """
+    Compute the relative nucleation between two processing conditions, given their
+    current density (mA/cm^2) and average particle radius (um).
+    """
+    molar_frac_ti_al3ti = 0.25
+
+    def compute_particle_count(
+        average_radius, molar_volume, solute_mass, total_solute_mass
+    ):
+        return molar_volume * (solute_mass - total_solute_mass) / average_radius**3
+
+    saturation_particle_count_1 = compute_particle_count(
+        average_radius_1 * 10**-6, V_M, molar_frac_ti_al3ti, COMPOSITION
+    )
+    saturation_particle_count_2 = compute_particle_count(
+        average_radius_1 * 10**-6, V_M, molar_frac_ti_al3ti, COMPOSITION
+    )
+
+    print(saturation_particle_count_1, saturation_particle_count_2)
+
+    return 0
 
 
 def compute_phase_diagram(db_al_ti, phases):
@@ -274,9 +300,9 @@ def compute_net_driving_force(bulk_driving_force, surface_energy):
         Net driving force in J
     """
     assert np.all(bulk_driving_force <= 0), "Bulk driving force should be all negative."
-    assert np.all(surface_energy > 0), (
-        "Surface energies should all be positive and nonzero"
-    )
+    assert np.all(
+        surface_energy > 0
+    ), "Surface energies should all be positive and nonzero"
 
     # Calculate critical radius and energy
     r_star = -2 * surface_energy / bulk_driving_force  # m
@@ -391,6 +417,8 @@ def main():
     plt.savefig("outputs/nucleation_rate.png", dpi=300)
     plt.close()
     timing["plotting"] = time.time() - start_time
+
+    compute_relative_nucleation_rate(0, 10, 2.6, 1.8)
 
     # Print timing results
     print("\nTiming Results:")
