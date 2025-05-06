@@ -1,4 +1,5 @@
 import os
+import pickle
 
 
 class FileIO:
@@ -22,3 +23,19 @@ class FileIO:
         output_dir = os.path.join(self.base_dir, "outputs")
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
+
+    def create_directory(self, directory_name):
+        assert isinstance(directory_name, str), "The directory_name must be a string"
+        directory_path = os.path.join(self.base_dir, directory_name)
+        if not os.path.exists(directory_path):
+            os.makedirs(directory_path)
+
+    def create_pickle_dump(self, data, filename):
+        assert isinstance(filename, str), "The filename must be a string"
+        with open(filename, "wb") as f:
+            pickle.dump(data, f)
+
+    def load_pickle_dump(self, filename):
+        assert isinstance(filename, str), "The filename must be a string"
+        with open(filename, "rb") as f:
+            return pickle.load(f)

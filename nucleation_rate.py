@@ -1,5 +1,3 @@
-import os
-import pickle
 import matplotlib.pyplot as plt
 from pycalphad import Database, binplot, Workspace, equilibrium, calculate
 from pycalphad.property_framework.metaproperties import IsolatedPhase
@@ -357,14 +355,13 @@ def main():
 
     # Compute driving forces
     dump_file_name = f"outputs/bulk_driving_force_{COMPOSITION}_mol_frac.pkl"
-
-    if os.path.exists(dump_file_name):
-        with open(dump_file_name, "rb") as f:
-            bulk_driving_force = pickle.load(f)
+    try:
+        bulk_driving_force = file_io.load_pickle_dump(dump_file_name)
         print("Loaded bulk_driving_force from dump file.")
-    else:
-        if not os.path.exists(f"outputs/temp_dependent_energy_{COMPOSITION}_mol_frac"):
-            os.makedirs(f"outputs/temp_dependent_energy_{COMPOSITION}_mol_frac")
+    except FileNotFoundError:
+        file_io.create_directory(
+            f"outputs/temp_dependent_energy_{COMPOSITION}_mol_frac"
+        )
 
         num_processes = cpu_count()
         print(f"Using {num_processes} processes for parallel computation")
@@ -374,8 +371,7 @@ def main():
                 compute_driving_force_for_temperature, TEMPERATURES
             )
 
-        with open(dump_file_name, "wb") as f:
-            pickle.dump(bulk_driving_force, f)
+        file_io.create_pickle_dump(bulk_driving_force, dump_file_name)
         print("Computed and saved bulk_driving_force to dump file.")
 
     # Plot results
