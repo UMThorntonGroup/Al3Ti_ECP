@@ -1,7 +1,5 @@
 import os
 
-from numpy import isin
-
 
 class FileIO:
     base_dir = os.getcwd()

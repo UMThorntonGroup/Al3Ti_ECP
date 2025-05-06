@@ -1,7 +1,5 @@
 import time
 
-from symengine import count_ops
-
 
 class Timer:
     logs = {}
@@ -52,10 +50,13 @@ class Timer:
         time_width = 18
         calls_width = 10
         avg_width = 18
-
-        print(
-            f"{'Label':<{label_width}}{'Total Time (s)':>{time_width}}{'Calls':>{calls_width}}{'Avg Time (s)':>{avg_width}}"
+        header = (
+            f"{'Label':<{label_width}}"
+            f"{'Total Time (s)':>{time_width}}"
+            f"{'Calls':>{calls_width}}"
+            f"{'Avg Time (s)':>{avg_width}}"
         )
+        print(header)
         print("-" * 80)
 
         # Prepare data
@@ -79,8 +80,12 @@ class Timer:
 
         # Print each row
         for label, total, count, avg in summary_data:
-            print(
-                f"{label:<{label_width}}{total:>{time_width}.4f}{count:>{calls_width}}{avg:>{avg_width}.4f}"
+            row = (
+                f"{label:<{label_width}}"
+                f"{total:>{time_width}.4f}"
+                f"{count:>{calls_width}}"
+                f"{avg:>{avg_width}.4f}"
             )
+            print(row)
 
         print("-" * 80)

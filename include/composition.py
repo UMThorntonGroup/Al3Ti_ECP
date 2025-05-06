@@ -9,44 +9,50 @@ class CompositionOperations:
         if global_molar_masses is not None:
             self.global_molar_masses = global_molar_masses
 
-    def compute_mole_fractions(self, fractions, molar_masses=None):
+    def compute_mole_fractions(self, mass_fractions, molar_masses=None):
         if molar_masses is None:
-            assert (
-                self.global_molar_masses is not None
-            ), "Molar masses must be provided in the constructor if none are provided in the compute function"
+            assert self.global_molar_masses is not None, (
+                "Molar masses must be provided in the constructor if none are "
+                "provided in the compute function"
+            )
             molar_masses = self.global_molar_masses
 
-        assert isinstance(fractions, np.ndarray), "fractions must be a NumPy array"
+        assert isinstance(
+            mass_fractions, np.ndarray
+        ), "mass_fractions must be a NumPy array"
         assert isinstance(
             molar_masses, np.ndarray
         ), "molar_masses must be a NumPy array"
-        assert len(fractions) == len(molar_masses), "Mismatched lengths"
-        total = np.sum(fractions)
+        assert len(mass_fractions) == len(molar_masses), "Mismatched lengths"
+        total = np.sum(mass_fractions)
         assert (
             abs(total - 1.0) < self.global_tolerance
         ), f"Mole fractions must sum to 1. Got {total}"
 
-        moles = fractions / molar_masses
+        moles = mass_fractions / molar_masses
         total_moles = np.sum(moles)
         return moles / total_moles
 
-    def compute_mass_fractions(self, fractions, molar_masses=None):
+    def compute_mass_fractions(self, mole_fractions, molar_masses=None):
         if molar_masses is None:
-            assert (
-                self.global_molar_masses is not None
-            ), "Molar masses must be provided in the constructor if none are provided in the compute function"
+            assert self.global_molar_masses is not None, (
+                "Molar masses must be provided in the constructor if none are "
+                "provided in the compute function"
+            )
             molar_masses = self.global_molar_masses
 
-        assert isinstance(fractions, np.ndarray), "fractions must be a NumPy array"
+        assert isinstance(
+            mole_fractions, np.ndarray
+        ), "mole_fractions must be a NumPy array"
         assert isinstance(
             molar_masses, np.ndarray
         ), "molar_masses must be a NumPy array"
-        assert len(fractions) == len(molar_masses), "Mismatched lengths"
-        total = np.sum(fractions)
+        assert len(mole_fractions) == len(molar_masses), "Mismatched lengths"
+        total = np.sum(mole_fractions)
         assert (
             abs(total - 1.0) < self.global_tolerance
         ), f"Mole fractions must sum to 1. Got {total}"
 
-        masses = fractions * molar_masses
+        masses = mole_fractions * molar_masses
         total_mass = np.sum(masses)
         return masses / total_mass
