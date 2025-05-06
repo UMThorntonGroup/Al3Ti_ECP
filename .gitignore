@@ -1,5 +1,6 @@
 # Python virtual environment
-al3ti_ecp/*
+**/al3ti_ecp/*
+**/venv/*
 
 # Outputs
 outputs/*

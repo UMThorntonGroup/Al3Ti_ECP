@@ -14,7 +14,7 @@ source al3ti_ecp/bin/activate
 This script requires a few python packages that can installed with the following commands.
 ```
 python3 -m pip install --upgrade pip
-pip install pycalphad matplotlib numpy
+pip install pycalphad matplotlib numpy pint
 ```
 The code can then be run with
 ```
