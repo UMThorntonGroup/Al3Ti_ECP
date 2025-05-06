@@ -5,8 +5,9 @@ from pycalphad import Database, binplot, Workspace, equilibrium, calculate
 from pycalphad.property_framework.metaproperties import IsolatedPhase
 import pycalphad.variables as v
 import numpy as np
-import time
 from multiprocessing import Pool, cpu_count
+from include.file_io import FileIO
+from include.timer import Timer
 
 # Global constants
 COMPOSITION = 0.00823  # mol fraction
@@ -19,12 +20,6 @@ V_M = MOLAR_MASS_AL3TI / RHO_AL3TI  # m^3/mol
 
 # Global variables
 db_al_ti = None
-
-
-def setup_output_directory():
-    """Create the outputs directory if it doesn't exist."""
-    if not os.path.exists("outputs"):
-        os.makedirs("outputs")
 
 
 def load_database():
@@ -346,24 +341,23 @@ def compute_nucleation_rate_estimate(free_energy, temperature):
 def main():
     """Main function to run the nucleation rate calculations."""
     global db_al_ti
-    timing = {}
 
-    # Setup
-    setup_output_directory()
+    # Setup various objects
+    file_io = FileIO()
+    timer = Timer()
 
     # Load database and compute phase diagram
-    start_time = time.time()
+    timer.begin("Load database")
     db_al_ti, phases = load_database()
-    timing["database_loading"] = time.time() - start_time
+    timer.end("Load database")
 
-    start_time = time.time()
+    timer.begin("Compute phase diagram")
     compute_phase_diagram(db_al_ti, phases)
-    timing["phase_diagram"] = time.time() - start_time
+    timer.end("Compute phase diagram")
 
     # Compute driving forces
     dump_file_name = f"outputs/bulk_driving_force_{COMPOSITION}_mol_frac.pkl"
 
-    start_time = time.time()
     if os.path.exists(dump_file_name):
         with open(dump_file_name, "rb") as f:
             bulk_driving_force = pickle.load(f)
@@ -383,10 +377,8 @@ def main():
         with open(dump_file_name, "wb") as f:
             pickle.dump(bulk_driving_force, f)
         print("Computed and saved bulk_driving_force to dump file.")
-    timing["driving_force_computation"] = time.time() - start_time
 
     # Plot results
-    start_time = time.time()
     plot_bulk_driving_forces(TEMPERATURES, bulk_driving_force)
 
     bulk_driving_force = molar_to_volumetric_driving_force(
@@ -416,16 +408,11 @@ def main():
     plt.ylabel("Estimated nucleation rate (Arrhenius)")
     plt.savefig("outputs/nucleation_rate.png", dpi=300)
     plt.close()
-    timing["plotting"] = time.time() - start_time
 
     compute_relative_nucleation_rate(0, 10, 2.6, 1.8)
 
     # Print timing results
-    print("\nTiming Results:")
-    print("---------------")
-    for section, duration in timing.items():
-        print(f"{section}: {duration:.2f} seconds")
-    print(f"Total time: {sum(timing.values()):.2f} seconds")
+    timer.print_summary()
 
 
 if __name__ == "__main__":
