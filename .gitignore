@@ -2,5 +2,9 @@
 **/al3ti_ecp/*
 **/venv/*
 
+# Compiled python objects
+**/__pycache__/*
+
 # Outputs
 outputs/*
+*.txt
