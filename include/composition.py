@@ -92,3 +92,14 @@ class CompositionOperations:
         x, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
 
         return x
+
+    def compute_volume_fractions(self, mole_fractions, molar_volumes):
+        assert isinstance(
+            mole_fractions, np.ndarray
+        ), "mole_fractions must be a NumPy array"
+        assert isinstance(
+            molar_volumes, np.ndarray
+        ), "molar_volumes must be a NumPy array"
+
+        total_volume = np.sum(mole_fractions * molar_volumes)
+        return mole_fractions * molar_volumes / total_volume

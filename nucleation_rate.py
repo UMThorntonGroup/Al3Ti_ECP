@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import numpy as np
 from multiprocessing import Pool, cpu_count
 from include.file_io import FileIO
@@ -12,7 +14,6 @@ MASS_FRACTION_AL = 1.0 - MASS_FRACTION_TI
 MOLAR_MASS_TI = 47.867  # g/mol
 MOLAR_MASS_AL = 26.982  # g/mol
 
-
 COMPOSITION_OPERATIONS = CompositionOperations()
 [COMPOSITION, _] = COMPOSITION_OPERATIONS.compute_mole_fractions(
     mass_fractions=np.array([MASS_FRACTION_TI, MASS_FRACTION_AL]),
@@ -21,6 +22,7 @@ COMPOSITION_OPERATIONS = CompositionOperations()
 
 # Global constants
 TEMPERATURES = np.arange(600, 1300, 5)  # K
+TEMPERATURE = 850.0 + 273.0  # K
 PRESSURE = 101325.0  # Pa
 BASE_SURFACE_ENERGY = 0.701  # J/m^2
 RHO_AL3TI = 3.42 * 10**6  # g/m^3
@@ -44,7 +46,6 @@ calphad.compute_binary_phase_diagram(
 )
 
 # Calculate the the phase fraction of Al3Ti and liquid
-TEMPERATURE = 850.0 + 273.0  # K
 phase_equilibrium = calphad.compute_binary_phase_equilibrium(
     ["AL", "TI", "VA"],
     ["DO22_XAL3", "LIQUID"],
@@ -66,9 +67,9 @@ phase_fractions = np.array(
     [equilibirum_phase_fraction_al3ti, equilibirum_phase_fraction_liquid]
 )
 molar_volumes = np.array([V_M_AL3TI, V_M_LIQUID])
-total_volume = np.sum(phase_fractions * molar_volumes)
-volume_fractions = phase_fractions * molar_volumes / total_volume
-
+volume_fractions = COMPOSITION_OPERATIONS.compute_volume_fractions(
+    phase_fractions, molar_volumes
+)
 print(f"Volume fractions: {volume_fractions}")
 
 
