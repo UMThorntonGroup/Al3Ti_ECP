@@ -56,3 +56,39 @@ class CompositionOperations:
         masses = mole_fractions * molar_masses
         total_mass = np.sum(masses)
         return masses / total_mass
+
+    def compute_equilibrium_phase_fractions(
+        self, mole_fractions, equilibrium_mole_fractions
+    ):
+        assert isinstance(
+            mole_fractions, np.ndarray
+        ), "equilibrium_mole_fractions must be a NumPy array"
+        assert isinstance(
+            equilibrium_mole_fractions, np.ndarray
+        ), "equilibrium_mole_fractions must be a 2D NumPy array"
+        assert isinstance(
+            equilibrium_mole_fractions[0], np.ndarray
+        ), "equilibrium_mole_fractions must be a 2D NumPy array"
+        assert len(mole_fractions) == len(
+            equilibrium_mole_fractions
+        ), "Mismatched lengths"
+
+        # Apply the lever rule
+        # First construct the nominal compositions
+        b = mole_fractions
+
+        # Then construct the equilibrium phase compositions
+        print(f"Mole fractions: {mole_fractions}")
+
+        # Add constraint that phase fractions sum to 1
+        A = np.vstack(
+            [equilibrium_mole_fractions.T, np.ones(equilibrium_mole_fractions.shape[1])]
+        )
+        b = np.append(mole_fractions, 1.0)
+        print(f"A: {A}")
+        print(f"b: {b}")
+
+        # Solve the system using least squares
+        x, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
+
+        return x

@@ -2,6 +2,8 @@ from pycalphad import Database, binplot, Workspace, equilibrium, calculate
 from pycalphad.property_framework.metaproperties import IsolatedPhase
 import pycalphad.variables as v
 import matplotlib.pyplot as plt
+import xarray as xr
+import numpy as np
 
 
 class Calphad:
@@ -22,15 +24,18 @@ class Calphad:
     def compute_binary_phase_diagram(
         self,
         components,
+        composition_variable,
         composition_range,
         temperature_range,
         pressure,
-        composition_variable,
         output_file_path,
         filename="phase_diagram",
     ):
         """Compute and save the binary phase diagram."""
         assert isinstance(components, list), "The components must be a list"
+        assert isinstance(
+            composition_variable, str
+        ), "The composition_variable must be a string"
         assert isinstance(
             composition_range, tuple
         ), "The composition_range must be a tuple"
@@ -38,9 +43,6 @@ class Calphad:
             temperature_range, tuple
         ), "The temperature_range must be a tuple"
         assert isinstance(pressure, float), "The pressure must be a float"
-        assert isinstance(
-            composition_variable, str
-        ), "The composition_variable must be a string"
 
         fig = plt.figure(figsize=(9, 6))
         axes = fig.gca()
@@ -62,20 +64,47 @@ class Calphad:
         plt.savefig(output_file_path + filename + ".png", dpi=300)
         plt.close(fig)
 
-    def compute_phase_equilibrium(self, components, composition, temperature, pressure):
-        phases = ["DO22_XAL3", "LIQUID"]
+    def compute_binary_phase_equilibrium(
+        self,
+        components,
+        phases,
+        composition_variable,
+        composition,
+        temperature,
+        pressure,
+    ):
+        assert isinstance(components, list), "The components must be a list"
+        assert isinstance(phases, list), "The phases must be a list"
+        assert isinstance(
+            composition_variable, str
+        ), "The composition_variable must be a string"
+        assert isinstance(composition, float), "The composition must be a float"
+        assert isinstance(temperature, float), "The temperature must be a float"
+        assert isinstance(pressure, float), "The pressure must be a float"
 
         equilibria_result = equilibrium(
             self.database,
             components,
             phases,
-            {v.X("TI"): composition, v.T: temperature, v.P: pressure, v.N: 1},
-        )
-
-        print(
-            equilibria_result.NP.where(equilibria_result.Phase == "DO22_XAL3")
-            .sel(P=pressure, T=temperature)[0][0]
-            .values[1]
+            {
+                v.X(composition_variable): composition,
+                v.T: temperature,
+                v.P: pressure,
+                v.N: 1,
+            },
         )
 
         return equilibria_result
+
+    def find_equilibrium_phase_fraction(self, equilibria_result, phase):
+        assert isinstance(
+            equilibria_result, xr.Dataset
+        ), "The equilibria_result must be a xarray.Dataset"
+        assert isinstance(phase, str), "The phase must be a string"
+
+        phase_fractions = equilibria_result.NP.where(
+            equilibria_result.Phase == phase
+        ).values
+        # Get the first non-NaN value
+        non_nan_values = phase_fractions[~np.isnan(phase_fractions)]
+        return float(non_nan_values[0]) if len(non_nan_values) > 0 else 0.0

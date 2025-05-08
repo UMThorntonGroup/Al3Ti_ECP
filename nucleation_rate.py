@@ -36,20 +36,40 @@ calphad = Calphad(AL_TI_SYSTEM)
 # Compute phase diagram
 calphad.compute_binary_phase_diagram(
     ["AL", "TI", "VA"],
+    "TI",
     (0, 0.3, 0.005),
     (300, 2000, 10),
     PRESSURE,
-    "TI",
     "outputs/",
 )
 
-# Calculate the phase equilibrium
-equilibrium_result = calphad.compute_phase_equilibrium(
+# Calculate the the phase fraction of Al3Ti and liquid
+TEMPERATURE = 850.0 + 273.0  # K
+phase_equilibrium = calphad.compute_binary_phase_equilibrium(
     ["AL", "TI", "VA"],
+    ["DO22_XAL3", "LIQUID"],
+    "TI",
     COMPOSITION,
-    850 + 273,
+    TEMPERATURE,
     PRESSURE,
 )
+equilibirum_phase_fraction_al3ti = calphad.find_equilibrium_phase_fraction(
+    phase_equilibrium, "DO22_XAL3"
+)
+equilibirum_phase_fraction_liquid = calphad.find_equilibrium_phase_fraction(
+    phase_equilibrium, "LIQUID"
+)
+print(f"Equilibirum phase fraction of Al3Ti: {equilibirum_phase_fraction_al3ti}")
+print(f"Equilibirum phase fraction of liquid: {equilibirum_phase_fraction_liquid}")
+
+phase_fractions = np.array(
+    [equilibirum_phase_fraction_al3ti, equilibirum_phase_fraction_liquid]
+)
+molar_volumes = np.array([V_M_AL3TI, V_M_LIQUID])
+total_volume = np.sum(phase_fractions * molar_volumes)
+volume_fractions = phase_fractions * molar_volumes / total_volume
+
+print(f"Volume fractions: {volume_fractions}")
 
 
 def compute_relative_nucleation_rate(
