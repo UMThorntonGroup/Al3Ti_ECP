@@ -1,5 +1,5 @@
 import math
-from re import template
+import numpy as np
 
 
 class Nucleation:
@@ -10,7 +10,9 @@ class Nucleation:
     def compute_critical_nucleus_radius(surface_energy, bulk_energy, shape="sphere"):
         assert isinstance(shape, str), "The nuclei shape must be a string"
         assert isinstance(surface_energy, float), "The surface_energy must be a float"
-        assert isinstance(bulk_energy, float), "The bulk_energy must be a float"
+        assert isinstance(
+            bulk_energy, np.ndarray
+        ), "The bulk_energy must be a np.ndarray"
         assert shape == "sphere", "We only support spherical nuclei"
 
         return 2.0 * surface_energy / bulk_energy
@@ -21,7 +23,9 @@ class Nucleation:
     ):
         assert isinstance(shape, str), "The nuclei shape must be a string"
         assert isinstance(surface_energy, float), "The surface_energy must be a float"
-        assert isinstance(bulk_energy, float), "The bulk_energy must be a float"
+        assert isinstance(
+            bulk_energy, np.ndarray
+        ), "The bulk_energy must be a np.ndarray"
         assert shape == "sphere", "We only support spherical nuclei"
 
         return 16.0 * math.pi / 3.0 * surface_energy**3 / bulk_energy**2
@@ -42,11 +46,15 @@ class Nucleation:
         assert isinstance(
             surface_energy_2, float
         ), "The surface_energy_2 must be a float"
-        assert isinstance(temperature, float), "The temperature must be a float"
+        assert isinstance(
+            temperature, np.ndarray
+        ), "The temperature must be a np.ndarray"
         assert isinstance(
             use_taylor_expansion, bool
         ), "use_taylor_expansion must be a bool"
-        assert isinstance(bulk_energy, float), "The bulk_energy must be a float"
+        assert isinstance(
+            bulk_energy, np.ndarray
+        ), "The bulk_energy must be a np.ndarray"
         assert shape == "sphere", "We only support spherical nuclei"
 
         A = surface_energy_2 / surface_energy_1

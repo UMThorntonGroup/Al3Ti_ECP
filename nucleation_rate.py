@@ -12,11 +12,11 @@ from pycalphad import Database, binplot, Workspace, equilibrium, calculate
 import pycalphad.variables as v
 import matplotlib.pyplot as plt
 import xarray as xr
-
+from include.nucleation import Nucleation
 
 # Al-Ti system
 AL_TI_SYSTEM = "TiAl.TDB"
-MASS_FRACTION_TI = 0.0145
+MASS_FRACTION_TI = 0.1
 MASS_FRACTION_AL = 1.0 - MASS_FRACTION_TI
 MOLAR_MASS_TI = 47.867  # g/mol
 MOLAR_MASS_AL = 26.982  # g/mol
@@ -28,10 +28,10 @@ COMPOSITION_OPERATIONS = CompositionOperations()
 )
 
 # Global constants
-TEMPERATURES = np.arange(600, 1300, 5)  # K
+TEMPERATURES = np.arange(300, 1300, 5)  # K
 TEMPERATURE = 850.0 + 273.0  # K
 PRESSURE = 101325.0  # Pa
-BASE_SURFACE_ENERGY = 0.701  # J/m^2
+BASE_SURFACE_ENERGY = 0.170  # J/m^2
 RHO_AL3TI = 3.42 * 10**6  # g/m^3
 RHO_LIQUID = 2.30 * 10**6  # g/m^3
 MOLAR_MASS_AL3TI = 128.812  # g/mol
@@ -46,7 +46,7 @@ calphad = Calphad(AL_TI_SYSTEM)
 calphad.compute_binary_phase_diagram(
     ["AL", "TI", "VA"],
     "TI",
-    (0, 0.3, 0.005),
+    (0, 0.01, 0.001),
     (300, 2000, 10),
     PRESSURE,
     "outputs/",
@@ -384,6 +384,29 @@ def main():
     bulk_driving_force = molar_to_volumetric_driving_force(
         np.array(bulk_driving_force), V_M_AL3TI
     )
+
+    # Make the nucleation object and do some computation
+    nucleation = Nucleation()
+    relative_ratios = nucleation.compute_relative_nucleation_rate(
+        BASE_SURFACE_ENERGY,
+        0.99 * BASE_SURFACE_ENERGY,
+        bulk_driving_force,
+        TEMPERATURES,
+        True,
+        "sphere",
+    )
+    critical_nuclei_radii = nucleation.compute_critical_nucleus_radius(
+        BASE_SURFACE_ENERGY, bulk_driving_force, "sphere"
+    )
+    plt.clf()
+    plt.plot(critical_nuclei_radii, relative_ratios, "-o")
+    plt.xlabel("Critical Radius (m)")
+    plt.ylabel("Nucleation Rate Ratio")
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.savefig("outputs/nucleation_rate_size.png", dpi=300)
+    plt.close()
+
     mask = (bulk_driving_force >= 0) & (TEMPERATURES > 0)
     bulk_driving_force = bulk_driving_force[mask]
     temperatures = TEMPERATURES[mask]
