@@ -138,17 +138,22 @@ def main():
         cmap="cool",
         s=50,
         alpha=0.6,
+        label="$A=0.99$",
     )
     cbar = plt.colorbar(scatter, label="Temperature [K]")
     cbar.ax.tick_params(labelsize=14)
     cbar.ax.set_ylabel("Temperature [K]", fontsize=14)
     plt.xlabel("Critical Radius (m)", fontsize=14)
     plt.ylabel("Nucleation Rate Ratio", fontsize=14)
-    plt.title(r"Nucleation Rate Ratio for $A=1$", fontsize=16)
     plt.xticks(fontsize=12)
     plt.yticks(fontsize=12)
+    plt.axvline(x=1.0e-6, color="black", linestyle="--", label=r"1 $\mu m$")
+    plt.axvline(x=1.0e-7, color="black", linestyle="--", label=r"100 $nm$")
+    plt.axvline(x=1.0e-8, color="black", linestyle="--", label=r"10 $nm$")
+    plt.axvline(x=1.0e-9, color="black", linestyle="--", label=r"1 $nm$")
     plt.xscale("log")
     plt.yscale("log")
+    plt.legend(fontsize=14)
     plt.savefig("outputs/nucleation_rate_size.png", dpi=300)
     plt.close()
 
