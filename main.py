@@ -6,13 +6,8 @@ from include.file_io import FileIO
 from include.timer import Timer
 from include.composition import CompositionOperations
 from include.calphad import Calphad
-import matplotlib.pyplot as plt
-from pycalphad.property_framework.metaproperties import IsolatedPhase
-from pycalphad import Database, binplot, Workspace, equilibrium, calculate
-import pycalphad.variables as v
-import matplotlib.pyplot as plt
-import xarray as xr
 from include.nucleation import Nucleation
+import matplotlib.pyplot as plt
 
 # Al-Ti system
 AL_TI_SYSTEM = "TiAl.TDB"
@@ -41,10 +36,18 @@ COMPOSITION_OPERATIONS = CompositionOperations()
 )
 
 
+def compute_driving_force_for_temp(args):
+    calphad, composition, pressure, temp = args
+    return calphad.compute_driving_force_for_temperature(composition, temp, pressure)
+
+
 def main():
     # Setup various objects
     file_io = FileIO()
     timer = Timer()
+
+    # Create output directory
+    file_io.create_output_directory()
 
     # Initialize calphad object
     timer.begin("Initialize calphad object")
@@ -104,13 +107,12 @@ def main():
         num_processes = cpu_count()
         print(f"Using {num_processes} processes for parallel computation")
         with Pool(processes=num_processes) as pool:
-            bulk_driving_force = pool.map(
-                calphad.compute_driving_force_for_temperature, TEMPERATURES
-            )
+            args = [(calphad, COMPOSITION, PRESSURE, temp) for temp in TEMPERATURES]
+            bulk_driving_force = pool.map(compute_driving_force_for_temp, args)
         file_io.create_pickle_dump(bulk_driving_force, dump_file_name)
         print("Computed and saved bulk_driving_force to dump file.")
     # Plot results
-    calphad.plot_bulk_driving_forces(TEMPERATURES, bulk_driving_force)
+    calphad.plot_bulk_driving_forces(TEMPERATURES, bulk_driving_force, V_M_AL3TI)
     bulk_driving_force = calphad.molar_to_volumetric_driving_force(
         np.array(bulk_driving_force), V_M_AL3TI
     )
@@ -140,7 +142,7 @@ def main():
     mask = (bulk_driving_force >= 0) & (TEMPERATURES > 0)
     bulk_driving_force = bulk_driving_force[mask]
     temperatures = TEMPERATURES[mask]
-    net_driving_force = compute_net_driving_force(
+    net_driving_force = calphad.compute_net_driving_force(
         -bulk_driving_force, BASE_SURFACE_ENERGY
     )
     plt.clf()

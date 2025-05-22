@@ -1,10 +1,10 @@
-import stat
 from pycalphad import Database, binplot, Workspace, equilibrium, calculate
 from pycalphad.property_framework.metaproperties import IsolatedPhase
 import pycalphad.variables as v
 import matplotlib.pyplot as plt
 import xarray as xr
 import numpy as np
+from include.file_io import FileIO
 
 
 class Calphad:
@@ -14,7 +14,7 @@ class Calphad:
     def __init__(self, database_name):
         assert isinstance(database_name, str), "The database_name must be a string"
         self.database = Database(database_name)
-        self.phases = self.database.phases.keys()
+        self.phases = list(self.database.phases.keys())
 
     def get_phases(self):
         return self.phases
@@ -170,37 +170,17 @@ class Calphad:
 
     @staticmethod
     def molar_to_volumetric_driving_force(molar_driving_force, molar_volume):
-        """
-        Convert molar driving force to volumetric driving force.
-        Args:
-            molar_driving_force: Driving force in J/mol
-            molar_volume: Molar volume in m^3/mol
-        Returns:
-            Volumetric driving force in J/m^3
-        """
         return molar_driving_force / molar_volume
 
-    def compute_driving_force_for_temperature(self, temperature):
-        """
-        Compute the driving force for a single temperature.
-        Args:
-            temperature: Temperature in Kelvin
-        Returns:
-            Driving force value for the given temperature
-        """
+    def compute_driving_force_for_temperature(
+        self, composition, temperature, pressure=101325.0
+    ):
+
         driving_force = []
-        self.compute_driving_force(driving_force, temperature)
+        self.compute_driving_force(driving_force, composition, temperature, pressure)
         return driving_force[0]
 
-    def compute_driving_force(
-        self, driving_force, composition, temperature=1123, pressure=101325.0
-    ):
-        """
-        Compute the driving force for phase transformation at a given temperature.
-        Args:
-            driving_force: List to store the computed driving force
-            temperature: Temperature in Kelvin
-        """
+    def compute_driving_force(self, driving_force, composition, temperature, pressure):
         # Create workspace for calculations
         al3ti_workspace = Workspace(
             "TiAl.TDB",
@@ -258,7 +238,7 @@ class Calphad:
             free_energies_liquid = calculate_result_liquid.GM.values[0][0][0]
 
             nominal_composition_point = np.array([1 - composition, composition])
-            supersaturated_free_energy = compute_free_energy_from_composition(
+            supersaturated_free_energy = self.compute_free_energy_from_composition(
                 compositions_al3ti,
                 compositions_liquid,
                 free_energies_al3ti,
@@ -269,7 +249,7 @@ class Calphad:
             # Plot equilibrium point
             plt.scatter(
                 equilbrium_point[1],
-                compute_free_energy_from_composition(
+                self.compute_free_energy_from_composition(
                     compositions_al3ti,
                     compositions_liquid,
                     free_energies_al3ti,
@@ -280,13 +260,13 @@ class Calphad:
                 label="Equilibrium Composition",
             )
 
-        print(
-            f"Supersatured G: {supersaturated_free_energy}\n"
-            f"Equilibrium G: {equilibrium_free_energy}\n"
-            f"Driving force: {supersaturated_free_energy - equilibrium_free_energy}"
+        driving_force.append(supersaturated_free_energy - equilibrium_free_energy)
+
+        file_io = FileIO()
+        file_io.create_directory(
+            f"outputs/temp_dependent_energy_{composition}_mol_frac"
         )
 
-        driving_force.append(supersaturated_free_energy - equilibrium_free_energy)
         ax.legend()
         plt.savefig(
             f"outputs/temp_dependent_energy_{composition}_mol_frac/free_energy_{temperature}.png",
@@ -294,7 +274,7 @@ class Calphad:
         )
         plt.close(fig)
 
-    def plot_bulk_driving_forces(self, temperatures, driving_force):
+    def plot_bulk_driving_forces(self, temperatures, driving_force, V_M):
         """
         Plot the bulk driving forces with and without electric current.
 
@@ -308,7 +288,7 @@ class Calphad:
         plt.plot(temperatures, driving_force, linewidth=3, label="No current")
         plt.plot(
             temperatures,
-            self.compute_ECP_driving_force(driving_force, current_density),
+            self.compute_ECP_driving_force(driving_force, current_density, V_M),
             linewidth=3,
             label=rf"j={original_current_density} $mA/cm^2$",
         )
@@ -317,7 +297,7 @@ class Calphad:
         current_density = original_current_density * 10  # A/m^2
         plt.plot(
             temperatures,
-            self.compute_ECP_driving_force(driving_force, current_density),
+            self.compute_ECP_driving_force(driving_force, current_density, V_M),
             linewidth=3,
             label=rf"j={original_current_density} $mA/cm^2$",
         )
@@ -330,6 +310,7 @@ class Calphad:
         plt.savefig("outputs/bulk_driving_force.png", dpi=300)
         plt.close()
 
+    @staticmethod
     def compute_net_driving_force(bulk_driving_force, surface_energy):
         """
         Compute the net driving force for nucleation.
