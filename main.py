@@ -131,9 +131,22 @@ def main():
         BASE_SURFACE_ENERGY, bulk_driving_force, "sphere"
     )
     plt.clf()
-    plt.plot(critical_nuclei_radii, relative_ratios, "-o")
-    plt.xlabel("Critical Radius (m)")
-    plt.ylabel("Nucleation Rate Ratio")
+    scatter = plt.scatter(
+        critical_nuclei_radii,
+        relative_ratios,
+        c=TEMPERATURES,
+        cmap="cool",
+        s=50,
+        alpha=0.6,
+    )
+    cbar = plt.colorbar(scatter, label="Temperature [K]")
+    cbar.ax.tick_params(labelsize=14)
+    cbar.ax.set_ylabel("Temperature [K]", fontsize=14)
+    plt.xlabel("Critical Radius (m)", fontsize=14)
+    plt.ylabel("Nucleation Rate Ratio", fontsize=14)
+    plt.title(r"Nucleation Rate Ratio for $A=1$", fontsize=16)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
     plt.xscale("log")
     plt.yscale("log")
     plt.savefig("outputs/nucleation_rate_size.png", dpi=300)
