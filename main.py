@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 # Al-Ti system
 AL_TI_SYSTEM = "TiAl.TDB"
-MASS_FRACTION_TI = 0.1
+MASS_FRACTION_TI = 0.0145
 MASS_FRACTION_AL = 1.0 - MASS_FRACTION_TI
 MOLAR_MASS_TI = 47.867  # g/mol
 MOLAR_MASS_AL = 26.982  # g/mol
@@ -63,6 +63,7 @@ def main():
         (300, 2000, 10),
         PRESSURE,
         "outputs/",
+        sample_composition=COMPOSITION,
     )
     timer.end("Compute phase diagram")
 

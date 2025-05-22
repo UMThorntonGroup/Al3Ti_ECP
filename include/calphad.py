@@ -31,6 +31,7 @@ class Calphad:
         pressure,
         output_file_path,
         filename="phase_diagram",
+        sample_composition=None,
     ):
         """Compute and save the binary phase diagram."""
         assert isinstance(components, list), "The components must be a list"
@@ -60,7 +61,23 @@ class Calphad:
             },
             plot_kwargs={"ax": axes},
         )
+        if sample_composition is not None:
+            plt.axvline(
+                x=sample_composition,
+                color="black",
+                linestyle="--",
+                label=f"{sample_composition * 100:.4f}%",
+            )
+            # Increase font size of the vertical line label
+            plt.legend(fontsize=14)
 
+        plt.xlabel(
+            f"{v.X(composition_variable).display_name} [{v.X(composition_variable).display_units}]",
+            fontsize=14,
+        )
+        plt.ylabel("Temperature [K]", fontsize=14)
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
         plt.tight_layout()
         plt.savefig(output_file_path + filename + ".png", dpi=300)
         plt.close(fig)
