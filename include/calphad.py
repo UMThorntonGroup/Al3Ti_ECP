@@ -1,3 +1,4 @@
+import stat
 from pycalphad import Database, binplot, Workspace, equilibrium, calculate
 from pycalphad.property_framework.metaproperties import IsolatedPhase
 import pycalphad.variables as v
@@ -108,3 +109,246 @@ class Calphad:
         # Get the first non-NaN value
         non_nan_values = phase_fractions[~np.isnan(phase_fractions)]
         return float(non_nan_values[0]) if len(non_nan_values) > 0 else 0.0
+
+    @staticmethod
+    def compute_free_energy_from_composition(
+        compositions_al3ti,
+        compositions_liquid,
+        free_energies_al3ti,
+        free_energies_liquid,
+        composition,
+    ):
+        """
+        Compute the free energy for a given composition by finding the closest points
+        in the phase diagrams and taking the minimum free energy.
+
+        Parameters
+        ----------
+        compositions_al3ti : np.ndarray
+            Array of compositions for the Al3Ti phase
+        compositions_liquid : np.ndarray
+            Array of compositions for the liquid phase
+        free_energies_al3ti : np.ndarray
+            Array of free energies for the Al3Ti phase
+        free_energies_liquid : np.ndarray
+            Array of free energies for the liquid phase
+        composition : np.ndarray
+            Composition point to evaluate
+        """
+        distances_al3ti = np.linalg.norm(compositions_al3ti - composition, axis=1)
+        closest_index_al3ti = np.argmin(distances_al3ti)
+        free_energy_al3ti = free_energies_al3ti[closest_index_al3ti]
+
+        distances_liquid = np.linalg.norm(compositions_liquid - composition, axis=1)
+        closest_index_liquid = np.argmin(distances_liquid)
+        free_energy_liquid = free_energies_liquid[closest_index_liquid]
+
+        return min(free_energy_al3ti, free_energy_liquid)
+
+    @staticmethod
+    def compute_ECP_driving_force(base_driving_force, current_density, V_M):
+        """
+        Compute the driving force under electric current conditions.
+        Args:
+            base_driving_force: Base driving force without current (J/mol)
+            current_density: Current density (A/m^2)
+        Returns:
+            Modified driving force accounting for electric current effects (J/mol)
+        """
+        # Conductivities at 850C
+        sigma_al3ti = 1.0 / (200 * 10**-8)  # 1/(Ohm*m)
+        sigma_liquid = 1.0 / (27 * 10**-8)  # 1/(Ohm*m)
+        # Radius of the cylindrical cast
+        r_0 = 20 * 10**-3  # m
+        # Permeability of free space
+        mu_0 = 1.25663706 * 10**-6  # N/A^2
+        # Compute parameters for Dolinsky's model
+        xi = (sigma_liquid - sigma_al3ti) / (2.0 * sigma_liquid - sigma_al3ti)
+        p_m = np.pi**2 * r_0**2 * current_density**2 * mu_0
+        dG = -4 * p_m * xi * V_M  # J/mol
+        return base_driving_force + dG * np.ones(np.shape(base_driving_force))
+
+    @staticmethod
+    def molar_to_volumetric_driving_force(molar_driving_force, molar_volume):
+        """
+        Convert molar driving force to volumetric driving force.
+        Args:
+            molar_driving_force: Driving force in J/mol
+            molar_volume: Molar volume in m^3/mol
+        Returns:
+            Volumetric driving force in J/m^3
+        """
+        return molar_driving_force / molar_volume
+
+    def compute_driving_force_for_temperature(self, temperature):
+        """
+        Compute the driving force for a single temperature.
+        Args:
+            temperature: Temperature in Kelvin
+        Returns:
+            Driving force value for the given temperature
+        """
+        driving_force = []
+        self.compute_driving_force(driving_force, temperature)
+        return driving_force[0]
+
+    def compute_driving_force(
+        self, driving_force, composition, temperature=1123, pressure=101325.0
+    ):
+        """
+        Compute the driving force for phase transformation at a given temperature.
+        Args:
+            driving_force: List to store the computed driving force
+            temperature: Temperature in Kelvin
+        """
+        # Create workspace for calculations
+        al3ti_workspace = Workspace(
+            "TiAl.TDB",
+            ["AL", "TI", "VA"],
+            ["DO22_XAL3", "LIQUID"],
+            {v.X("TI"): (0, 0.3, 0.005), v.T: temperature, v.P: pressure, v.N: 1},
+        )
+        # Set up figure for visualization
+        fig = plt.figure()
+        ax = fig.add_subplot()
+        x = al3ti_workspace.get(v.X("TI"))
+        ax.set_xlabel(f"{v.X('TI').display_name} [{v.X('TI').display_units}]")
+        # Plot phase free energies
+        for phase_name in al3ti_workspace.phases:
+            metastable_wks = al3ti_workspace.copy()
+            metastable_wks.phases = [phase_name]
+            prop = IsolatedPhase(phase_name, metastable_wks)(f"GM({phase_name})")
+            prop.display_name = f"GM({phase_name})"
+            ax.plot(x, al3ti_workspace.get(prop), label=prop.display_name)
+        ax.axvline(
+            composition, linestyle="--", color="black", label="Nominal composition"
+        )
+
+        # Calculate phase equilibria
+        phases = ["DO22_XAL3", "LIQUID"]
+        equilibria_result = equilibrium(
+            self.database,
+            ["AL", "TI", "VA"],
+            phases,
+            {v.X("TI"): composition, v.T: temperature, v.P: pressure, v.N: 1},
+        )
+
+        equilibrium_free_energy = (
+            equilibria_result.sel(P=pressure, T=temperature).GM[0][0].values
+        )
+
+        # Calculate free energy curves
+        calculate_result_al3ti = calculate(
+            self.database, ["AL", "TI", "VA"], "DO22_XAL3", P=pressure, T=temperature
+        )
+        calculate_result_liquid = calculate(
+            self.database, ["AL", "TI", "VA"], "LIQUID", P=pressure, T=temperature
+        )
+
+        # Process equilibrium points
+        for equilbrium_point in (
+            equilibria_result.sel(P=pressure, T=temperature).X[0][0].values
+        ):
+            if np.all(np.isnan(equilbrium_point)):
+                continue
+
+            compositions_al3ti = calculate_result_al3ti.X.values[0][0][0]
+            compositions_liquid = calculate_result_liquid.X.values[0][0][0]
+            free_energies_al3ti = calculate_result_al3ti.GM.values[0][0][0]
+            free_energies_liquid = calculate_result_liquid.GM.values[0][0][0]
+
+            nominal_composition_point = np.array([1 - composition, composition])
+            supersaturated_free_energy = compute_free_energy_from_composition(
+                compositions_al3ti,
+                compositions_liquid,
+                free_energies_al3ti,
+                free_energies_liquid,
+                nominal_composition_point,
+            )
+
+            # Plot equilibrium point
+            plt.scatter(
+                equilbrium_point[1],
+                compute_free_energy_from_composition(
+                    compositions_al3ti,
+                    compositions_liquid,
+                    free_energies_al3ti,
+                    free_energies_liquid,
+                    equilbrium_point,
+                ),
+                color="black",
+                label="Equilibrium Composition",
+            )
+
+        print(
+            f"Supersatured G: {supersaturated_free_energy}\n"
+            f"Equilibrium G: {equilibrium_free_energy}\n"
+            f"Driving force: {supersaturated_free_energy - equilibrium_free_energy}"
+        )
+
+        driving_force.append(supersaturated_free_energy - equilibrium_free_energy)
+        ax.legend()
+        plt.savefig(
+            f"outputs/temp_dependent_energy_{composition}_mol_frac/free_energy_{temperature}.png",
+            dpi=300,
+        )
+        plt.close(fig)
+
+    def plot_bulk_driving_forces(self, temperatures, driving_force):
+        """
+        Plot the bulk driving forces with and without electric current.
+
+        Args:
+            temperatures: Array of temperatures in Kelvin
+            driving_force: Array of driving forces in J/mol
+        """
+        original_current_density = 13  # mA/cm^2
+        current_density = original_current_density * 10  # A/m^2
+
+        plt.plot(temperatures, driving_force, linewidth=3, label="No current")
+        plt.plot(
+            temperatures,
+            self.compute_ECP_driving_force(driving_force, current_density),
+            linewidth=3,
+            label=rf"j={original_current_density} $mA/cm^2$",
+        )
+
+        original_current_density = 500  # mA/cm^2
+        current_density = original_current_density * 10  # A/m^2
+        plt.plot(
+            temperatures,
+            self.compute_ECP_driving_force(driving_force, current_density),
+            linewidth=3,
+            label=rf"j={original_current_density} $mA/cm^2$",
+        )
+        plt.axvline(1123, linestyle="--", color="black", label=r"850$\degree$C")
+        plt.axhline(y=0, color="black", linestyle="--")
+        plt.xlabel("Temperature [K]", fontsize=16)
+        plt.ylabel("Bulk Driving Force [J/mol]", fontsize=16)
+        plt.legend(fontsize=14)
+        plt.tight_layout()
+        plt.savefig("outputs/bulk_driving_force.png", dpi=300)
+        plt.close()
+
+    def compute_net_driving_force(bulk_driving_force, surface_energy):
+        """
+        Compute the net driving force for nucleation.
+        Args:
+            bulk_driving_force: Bulk driving force in J/m^3
+            surface_energy: Surface energy in J/m^2
+        Returns:
+            Net driving force in J
+        """
+        assert np.all(
+            bulk_driving_force <= 0
+        ), "Bulk driving force should be all negative."
+        assert np.all(
+            surface_energy > 0
+        ), "Surface energies should all be positive and nonzero"
+        # Calculate critical radius and energy
+        r_star = -2 * surface_energy / bulk_driving_force  # m
+        G_star = (
+            4 / 3 * np.pi * r_star**3 * bulk_driving_force
+            + 4 * np.pi * r_star**2 * surface_energy
+        )
+        return G_star
