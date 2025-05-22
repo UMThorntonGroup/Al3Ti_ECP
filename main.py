@@ -59,11 +59,12 @@ def main():
     calphad.compute_binary_phase_diagram(
         ["AL", "TI", "VA"],
         "TI",
-        (0, 0.01, 0.001),
+        (0, 0.1, 0.001),
         (300, 2000, 10),
         PRESSURE,
         "outputs/",
         sample_composition=COMPOSITION,
+        sample_temperature=TEMPERATURE,
     )
     timer.end("Compute phase diagram")
 

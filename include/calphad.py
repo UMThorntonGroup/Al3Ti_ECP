@@ -32,6 +32,7 @@ class Calphad:
         output_file_path,
         filename="phase_diagram",
         sample_composition=None,
+        sample_temperature=None,
     ):
         """Compute and save the binary phase diagram."""
         assert isinstance(components, list), "The components must be a list"
@@ -68,7 +69,14 @@ class Calphad:
                 linestyle="--",
                 label=f"{sample_composition * 100:.4f}%",
             )
-            # Increase font size of the vertical line label
+            plt.legend(fontsize=14)
+        if sample_temperature is not None:
+            plt.axhline(
+                y=sample_temperature,
+                color="black",
+                linestyle="--",
+                label=f"{sample_temperature}",
+            )
             plt.legend(fontsize=14)
 
         plt.xlabel(
