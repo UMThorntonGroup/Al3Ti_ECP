@@ -119,14 +119,19 @@ def main():
         np.array(bulk_driving_force), V_M_AL3TI
     )
 
+    # Truncate the bulk driving force to be negative and flip the sign on bulk driving force
+    mask = bulk_driving_force < 0
+    bulk_driving_force = -bulk_driving_force[mask]
+    temperatures = TEMPERATURES[mask]
+
     # Make the nucleation object and do some computation
     nucleation = Nucleation()
     relative_ratios = nucleation.compute_relative_nucleation_rate(
         BASE_SURFACE_ENERGY,
         0.99 * BASE_SURFACE_ENERGY,
         bulk_driving_force,
-        TEMPERATURES,
-        False,
+        temperatures,
+        True,
         "sphere",
     )
     critical_nuclei_radii = nucleation.compute_critical_nucleus_radius(
@@ -136,11 +141,20 @@ def main():
     scatter = plt.scatter(
         critical_nuclei_radii,
         relative_ratios,
-        c=TEMPERATURES,
+        c=temperatures,
         cmap="cool",
         s=50,
         alpha=0.6,
         label="$A=0.99$",
+    )
+    # Through a star at the temperature of 850C
+    plt.scatter(
+        critical_nuclei_radii[np.argmin(np.abs(temperatures - 1123))],
+        relative_ratios[np.argmin(np.abs(temperatures - 1123))],
+        color="black",
+        marker="*",
+        s=100,
+        label=f"${temperatures[np.argmin(np.abs(temperatures - 1123))]}K$",
     )
     cbar = plt.colorbar(scatter, label="Temperature [K]")
     cbar.ax.tick_params(labelsize=14)
@@ -155,9 +169,6 @@ def main():
     plt.savefig("outputs/nucleation_rate_size.png", dpi=300)
     plt.close()
 
-    mask = (bulk_driving_force >= 0) & (TEMPERATURES > 0)
-    bulk_driving_force = bulk_driving_force[mask]
-    temperatures = TEMPERATURES[mask]
     net_driving_force = calphad.compute_net_driving_force(
         -bulk_driving_force, BASE_SURFACE_ENERGY
     )
