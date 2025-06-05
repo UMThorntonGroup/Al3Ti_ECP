@@ -126,7 +126,7 @@ def main():
         0.99 * BASE_SURFACE_ENERGY,
         bulk_driving_force,
         TEMPERATURES,
-        True,
+        False,
         "sphere",
     )
     critical_nuclei_radii = nucleation.compute_critical_nucleus_radius(
@@ -149,10 +149,6 @@ def main():
     plt.ylabel("Nucleation Rate Ratio", fontsize=14)
     plt.xticks(fontsize=12)
     plt.yticks(fontsize=12)
-    plt.axvline(x=1.0e-6, color="black", linestyle="--", label=r"1 $\mu m$")
-    plt.axvline(x=1.0e-7, color="black", linestyle="--", label=r"100 $nm$")
-    plt.axvline(x=1.0e-8, color="black", linestyle="--", label=r"10 $nm$")
-    plt.axvline(x=1.0e-9, color="black", linestyle="--", label=r"1 $nm$")
     plt.xscale("log")
     plt.yscale("log")
     plt.legend(fontsize=14)

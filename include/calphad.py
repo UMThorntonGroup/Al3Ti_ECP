@@ -206,12 +206,21 @@ class Calphad:
         return driving_force[0]
 
     def compute_driving_force(self, driving_force, composition, temperature, pressure):
+
+        phases = ["DO22_XAL3", "LIQUID"]
+        max_ti_composition = 0.3
+
         # Create workspace for calculations
         al3ti_workspace = Workspace(
-            "TiAl.TDB",
+            self.database,
             ["AL", "TI", "VA"],
-            ["DO22_XAL3", "LIQUID"],
-            {v.X("TI"): (0, 0.3, 0.005), v.T: temperature, v.P: pressure, v.N: 1},
+            phases,
+            {
+                v.X("TI"): (0, max_ti_composition, 0.005),
+                v.T: temperature,
+                v.P: pressure,
+                v.N: 1,
+            },
         )
         # Set up figure for visualization
         fig = plt.figure()
@@ -230,16 +239,11 @@ class Calphad:
         )
 
         # Calculate phase equilibria
-        phases = ["DO22_XAL3", "LIQUID"]
         equilibria_result = equilibrium(
             self.database,
             ["AL", "TI", "VA"],
             phases,
             {v.X("TI"): composition, v.T: temperature, v.P: pressure, v.N: 1},
-        )
-
-        equilibrium_free_energy = (
-            equilibria_result.sel(P=pressure, T=temperature).GM[0][0].values
         )
 
         # Calculate free energy curves
@@ -250,26 +254,26 @@ class Calphad:
             self.database, ["AL", "TI", "VA"], "LIQUID", P=pressure, T=temperature
         )
 
-        # Process equilibrium points
+        # Grab the compositions and free energies
+        compositions_al3ti = calculate_result_al3ti.X.values[0][0][0]
+        compositions_liquid = calculate_result_liquid.X.values[0][0][0]
+        free_energies_al3ti = calculate_result_al3ti.GM.values[0][0][0]
+        free_energies_liquid = calculate_result_liquid.GM.values[0][0][0]
+
+        # Restrict the compositions to the range above
+        mask = compositions_al3ti[:, 1] <= max_ti_composition
+        compositions_al3ti = compositions_al3ti[mask]
+        free_energies_al3ti = free_energies_al3ti[mask]
+        mask = compositions_liquid[:, 1] <= max_ti_composition
+        compositions_liquid = compositions_liquid[mask]
+        free_energies_liquid = free_energies_liquid[mask]
+
+        # Plot the equilibrium points
         for equilbrium_point in (
             equilibria_result.sel(P=pressure, T=temperature).X[0][0].values
         ):
             if np.all(np.isnan(equilbrium_point)):
                 continue
-
-            compositions_al3ti = calculate_result_al3ti.X.values[0][0][0]
-            compositions_liquid = calculate_result_liquid.X.values[0][0][0]
-            free_energies_al3ti = calculate_result_al3ti.GM.values[0][0][0]
-            free_energies_liquid = calculate_result_liquid.GM.values[0][0][0]
-
-            nominal_composition_point = np.array([1 - composition, composition])
-            supersaturated_free_energy = self.compute_free_energy_from_composition(
-                compositions_al3ti,
-                compositions_liquid,
-                free_energies_al3ti,
-                free_energies_liquid,
-                nominal_composition_point,
-            )
 
             # Plot equilibrium point
             plt.scatter(
@@ -285,13 +289,72 @@ class Calphad:
                 label="Equilibrium Composition",
             )
 
-        driving_force.append(supersaturated_free_energy - equilibrium_free_energy)
+        # Grab the compositions
+        ti_composition = compositions_liquid[:, 1]
+        nominal_ti_composition = composition
+        distances_ti_composition = np.abs(ti_composition - nominal_ti_composition)
+        assert np.shape(ti_composition) == np.shape(free_energies_liquid)
 
+        # Find the closest and second closest points
+        closest_index_liquid = np.argmin(distances_ti_composition)
+        distances_ti_composition = np.delete(
+            distances_ti_composition, closest_index_liquid
+        )
+        second_closest_index_liquid = np.argmin(distances_ti_composition)
+
+        # Compute the tangent slope
+        tangent_slope_liquid = (
+            free_energies_liquid[second_closest_index_liquid]
+            - free_energies_liquid[closest_index_liquid]
+        ) / (
+            ti_composition[second_closest_index_liquid]
+            - ti_composition[closest_index_liquid]
+        )
+        assert np.all(tangent_slope_liquid < 0), "All tangent slopes should be negative"
+
+        # Plot the tangent line at the nominal composition point
+        ones_array = np.ones(np.shape(ti_composition))
+        tangent_free_energy = free_energies_liquid[
+            closest_index_liquid
+        ] * ones_array + tangent_slope_liquid * ones_array * (
+            ti_composition - ti_composition[closest_index_liquid]
+        )
+        plt.plot(
+            ti_composition,
+            tangent_free_energy,
+            color="red",
+            label="Tangent Line",
+        )
+
+        # Plot the point on the tangent line for the Al3Ti equilibrium point
+        al3ti_equilibrium_point = (
+            equilibria_result.sel(P=pressure, T=temperature).X[0][0].values[1]
+        )
+        distances_ti_composition = np.abs(ti_composition - al3ti_equilibrium_point[1])
+        closest_index = np.argmin(distances_ti_composition)
+        plt.scatter(
+            al3ti_equilibrium_point[1],
+            tangent_free_energy[closest_index],
+            color="black",
+            label="Al3Ti Equilibrium Point",
+        )
+
+        # Compute the driving force
+        free_energy_supercooled_liquid = tangent_free_energy[closest_index]
+        distances_ti_composition = np.abs(
+            compositions_al3ti[:, 1] - al3ti_equilibrium_point[1]
+        )
+        closest_index = np.argmin(distances_ti_composition)
+        free_energy_al3ti = free_energies_al3ti[closest_index]
+        driving_force.append(free_energy_al3ti - free_energy_supercooled_liquid)
+
+        # Create the output directory
         file_io = FileIO()
         file_io.create_directory(
             f"outputs/temp_dependent_energy_{composition}_mol_frac"
         )
 
+        # Plot the legend and save the figure
         ax.legend()
         plt.savefig(
             f"outputs/temp_dependent_energy_{composition}_mol_frac/free_energy_{temperature}.png",

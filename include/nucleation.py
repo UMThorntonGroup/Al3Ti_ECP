@@ -70,7 +70,7 @@ class Nucleation:
                 * (A - 1.0)
             )
         else:
-            return math.exp(
+            return np.exp(
                 16.0
                 * math.pi
                 * surface_energy_1**3
