@@ -29,8 +29,7 @@ V_M_AL3TI = MOLAR_MASS_AL3TI / RHO_AL3TI  # m^3/mol
 V_M_LIQUID = MOLAR_MASS_LIQUID / RHO_LIQUID  # m^3/mol
 
 # Determine the mole fraction of Ti and Al
-COMPOSITION_OPERATIONS = CompositionOperations()
-[COMPOSITION, _] = COMPOSITION_OPERATIONS.compute_mole_fractions(
+[COMPOSITION, _] = CompositionOperations().compute_mole_fractions(
     mass_fractions=np.array([MASS_FRACTION_TI, MASS_FRACTION_AL]),
     molar_masses=np.array([MOLAR_MASS_TI, MOLAR_MASS_AL]),
 )
@@ -92,7 +91,7 @@ def main():
         [equilibirum_phase_fraction_al3ti, equilibirum_phase_fraction_liquid]
     )
     molar_volumes = np.array([V_M_AL3TI, V_M_LIQUID])
-    volume_fractions = COMPOSITION_OPERATIONS.compute_volume_fractions(
+    volume_fractions = CompositionOperations().compute_volume_fractions(
         phase_fractions, molar_volumes
     )
     print(f"Volume fractions: {volume_fractions}")
