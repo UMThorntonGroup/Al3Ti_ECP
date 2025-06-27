@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from os import wait
 import numpy as np
 from multiprocessing import Pool, cpu_count
 from include.file_io import FileIO
@@ -8,6 +9,7 @@ from include.composition import CompositionOperations
 from include.calphad import Calphad
 from include.nucleation import Nucleation
 from include.mean_radius import MeanRadius
+from include.skin_effect import SkinEffect
 import matplotlib.pyplot as plt
 
 # Al-Ti system
@@ -184,6 +186,9 @@ def main():
     mean_radius = MeanRadius()
     mean_radius.compute_mean_radius(COMPOSITION, TEMPERATURE, PRESSURE)
     timer.end("Precipitate size distribution")
+
+    # Compute the skin skin effect
+    skin_effect = SkinEffect("cylinder")
 
     # Print timing results
     timer.print_summary()
