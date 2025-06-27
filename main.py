@@ -7,6 +7,7 @@ from include.timer import Timer
 from include.composition import CompositionOperations
 from include.calphad import Calphad
 from include.nucleation import Nucleation
+from include.mean_radius import MeanRadius
 import matplotlib.pyplot as plt
 
 # Al-Ti system
@@ -177,6 +178,12 @@ def main():
     plt.ylabel("Driving Force [J]")
     plt.savefig("outputs/net_driving_force.png", dpi=300)
     plt.close()
+
+    # Comput the precipitate size distribution from the mean radius approach
+    timer.begin("Precipitate size distribution")
+    mean_radius = MeanRadius()
+    mean_radius.compute_mean_radius(COMPOSITION, TEMPERATURE, PRESSURE)
+    timer.end("Precipitate size distribution")
 
     # Print timing results
     timer.print_summary()
