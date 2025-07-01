@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from os import wait
 import numpy as np
 from multiprocessing import Pool, cpu_count
 from include.file_io import FileIO
@@ -8,6 +9,7 @@ from include.composition import CompositionOperations
 from include.calphad import Calphad
 from include.nucleation import Nucleation
 from include.mean_radius import MeanRadius
+from include.skin_effect import SkinEffect
 import matplotlib.pyplot as plt
 
 # Al-Ti system
@@ -128,71 +130,14 @@ def main():
     )
     calphad.plot_relative_driving_force(driving_force_850C, V_M_AL3TI)
 
-    # Truncate the bulk driving force to be negative and flip the sign on bulk driving force
-    mask = bulk_driving_force < 0
-    bulk_driving_force = -bulk_driving_force[mask]
-    temperatures = TEMPERATURES[mask]
-
-    # Make the nucleation object and do some computation
-    nucleation = Nucleation()
-    relative_ratios = nucleation.compute_relative_nucleation_rate(
-        BASE_SURFACE_ENERGY,
-        0.99 * BASE_SURFACE_ENERGY,
-        bulk_driving_force,
-        temperatures,
-        True,
-        "sphere",
-    )
-    critical_nuclei_radii = nucleation.compute_critical_nucleus_radius(
-        BASE_SURFACE_ENERGY, bulk_driving_force, "sphere"
-    )
-    plt.clf()
-    scatter = plt.scatter(
-        critical_nuclei_radii,
-        relative_ratios,
-        c=temperatures,
-        cmap="cool",
-        s=50,
-        alpha=0.6,
-        label="$A=0.99$",
-    )
-    # Through a star at the temperature of 850C
-    plt.scatter(
-        critical_nuclei_radii[np.argmin(np.abs(temperatures - 1123))],
-        relative_ratios[np.argmin(np.abs(temperatures - 1123))],
-        color="black",
-        marker="*",
-        s=100,
-        label=f"${temperatures[np.argmin(np.abs(temperatures - 1123))]}K$",
-    )
-    cbar = plt.colorbar(scatter, label="Temperature [K]")
-    cbar.ax.tick_params(labelsize=14)
-    cbar.ax.set_ylabel("Temperature [K]", fontsize=14)
-    plt.xlabel("Critical Radius (m)", fontsize=14)
-    plt.ylabel("Nucleation Rate Ratio", fontsize=14)
-    plt.xticks(fontsize=12)
-    plt.yticks(fontsize=12)
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.legend(fontsize=14)
-    plt.savefig("outputs/nucleation_rate_size.png", dpi=300)
-    plt.close()
-
-    net_driving_force = calphad.compute_net_driving_force(
-        -bulk_driving_force, BASE_SURFACE_ENERGY
-    )
-    plt.clf()
-    plt.plot(temperatures, net_driving_force, "-o", label="No current")
-    plt.xlabel("Temperature [K]")
-    plt.ylabel("Driving Force [J]")
-    plt.savefig("outputs/net_driving_force.png", dpi=300)
-    plt.close()
-
     # Comput the precipitate size distribution from the mean radius approach
     timer.begin("Precipitate size distribution")
     mean_radius = MeanRadius()
     mean_radius.compute_mean_radius(COMPOSITION, TEMPERATURE, PRESSURE)
     timer.end("Precipitate size distribution")
+
+    # Compute the skin skin effect
+    skin_effect = SkinEffect("cylinder")
 
     # Print timing results
     timer.print_summary()
