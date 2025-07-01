@@ -119,6 +119,15 @@ def main():
         np.array(bulk_driving_force), V_M_AL3TI
     )
 
+    # Grab the driving force at 850C
+    driving_force_850C = calphad.molar_to_volumetric_driving_force(
+        calphad.compute_driving_force_for_temperature(
+            COMPOSITION, 850.0 + 273.0, PRESSURE
+        ),
+        V_M_AL3TI,
+    )
+    calphad.plot_relative_driving_force(driving_force_850C, V_M_AL3TI)
+
     # Truncate the bulk driving force to be negative and flip the sign on bulk driving force
     mask = bulk_driving_force < 0
     bulk_driving_force = -bulk_driving_force[mask]

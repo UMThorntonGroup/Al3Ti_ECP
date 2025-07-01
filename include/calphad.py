@@ -171,7 +171,7 @@ class Calphad:
         return min(free_energy_al3ti, free_energy_liquid)
 
     @staticmethod
-    def compute_ECP_driving_force(base_driving_force, current_density, V_M):
+    def compute_ECP_driving_force(current_density, V_M):
         """
         Compute the driving force under electric current conditions.
         Args:
@@ -191,7 +191,7 @@ class Calphad:
         xi = (sigma_liquid - sigma_al3ti) / (2.0 * sigma_liquid - sigma_al3ti)
         p_m = np.pi**2 * r_0**2 * current_density**2 * mu_0
         dG = -4 * p_m * xi * V_M  # J/mol
-        return base_driving_force + dG * np.ones(np.shape(base_driving_force))
+        return dG
 
     @staticmethod
     def molar_to_volumetric_driving_force(molar_driving_force, molar_volume):
@@ -362,6 +362,23 @@ class Calphad:
         )
         plt.close(fig)
 
+    def plot_relative_driving_force(self, bulk_driving_forces, V_M):
+        current_densities = np.logspace(-4, 6, 100)
+        ECP_driving_forces = self.compute_ECP_driving_force(
+            current_densities * 10**4, V_M
+        )
+
+        plt.figure(figsize=(4, 3))
+        plt.plot(current_densities, ECP_driving_forces / bulk_driving_forces)
+        plt.xscale("log")
+        plt.xlabel(r"Current Density [$A/cm^2$]", fontsize=14)
+        plt.ylabel("Relative Driving Force", fontsize=14)
+        plt.tight_layout()
+        plt.ylim(0, 0.05)
+        plt.savefig("outputs/relative_driving_force.png", dpi=300)
+        plt.close()
+        pass
+
     def plot_bulk_driving_forces(self, temperatures, driving_force, V_M):
         """
         Plot the bulk driving forces with and without electric current.
@@ -370,33 +387,33 @@ class Calphad:
             temperatures: Array of temperatures in Kelvin
             driving_force: Array of driving forces in J/mol
         """
-        original_current_density = 13  # mA/cm^2
-        current_density = original_current_density * 10  # A/m^2
+        # original_current_density = 13  # mA/cm^2
+        # current_density = original_current_density * 10  # A/m^2
 
-        plt.plot(temperatures, driving_force, linewidth=3, label="No current")
-        plt.plot(
-            temperatures,
-            self.compute_ECP_driving_force(driving_force, current_density, V_M),
-            linewidth=3,
-            label=rf"j={original_current_density} $mA/cm^2$",
-        )
+        # plt.plot(temperatures, driving_force, linewidth=3, label="No current")
+        # plt.plot(
+        #     temperatures,
+        #     self.compute_ECP_driving_force(driving_force, current_density, V_M),
+        #     linewidth=3,
+        #     label=rf"j={original_current_density} $mA/cm^2$",
+        # )
 
-        original_current_density = 500  # mA/cm^2
-        current_density = original_current_density * 10  # A/m^2
-        plt.plot(
-            temperatures,
-            self.compute_ECP_driving_force(driving_force, current_density, V_M),
-            linewidth=3,
-            label=rf"j={original_current_density} $mA/cm^2$",
-        )
-        plt.axvline(1123, linestyle="--", color="black", label=r"850$\degree$C")
-        plt.axhline(y=0, color="black", linestyle="--")
-        plt.xlabel("Temperature [K]", fontsize=16)
-        plt.ylabel("Bulk Driving Force [J/mol]", fontsize=16)
-        plt.legend(fontsize=14)
-        plt.tight_layout()
-        plt.savefig("outputs/bulk_driving_force.png", dpi=300)
-        plt.close()
+        # original_current_density = 500  # mA/cm^2
+        # current_density = original_current_density * 10  # A/m^2
+        # plt.plot(
+        #     temperatures,
+        #     self.compute_ECP_driving_force(driving_force, current_density, V_M),
+        #     linewidth=3,
+        #     label=rf"j={original_current_density} $mA/cm^2$",
+        # )
+        # plt.axvline(1123, linestyle="--", color="black", label=r"850$\degree$C")
+        # plt.axhline(y=0, color="black", linestyle="--")
+        # plt.xlabel("Temperature [K]", fontsize=16)
+        # plt.ylabel("Bulk Driving Force [J/mol]", fontsize=16)
+        # plt.legend(fontsize=14)
+        # plt.tight_layout()
+        # plt.savefig("outputs/bulk_driving_force.png", dpi=300)
+        # plt.close()
 
     @staticmethod
     def compute_net_driving_force(bulk_driving_force, surface_energy):

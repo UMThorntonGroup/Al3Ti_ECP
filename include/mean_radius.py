@@ -32,7 +32,7 @@ class MeanRadius:
         self.nucleation_site_density = jnp.array([1.0e20])  # number / m^3
 
         self.time = jnp.array([1.0e-10])  # s
-        self.mean_radius = jnp.array([0.0])  # m
+        self.mean_radius = jnp.array([1.0])  # m
         self.volume_fraction = jnp.array([0.0])  # m^3 / m^3
         self.n_precipitates = jnp.array([0.0])  # number
 
@@ -77,13 +77,7 @@ class MeanRadius:
     def compute_zeldovich_factor(
         mean_atomic_volume, critical_radius, surface_energy, temperature
     ):
-        # Check if the units are correct
         boltzmann_constant = 1.380649e-23  # J/K
-
-        print(boltzmann_constant * temperature)
-
-        print(1.0 / jnp.sqrt(jnp.pi) / 3.87305579e-12)
-
         return (
             mean_atomic_volume
             / (2.0 * jnp.pi * critical_radius)
@@ -169,6 +163,8 @@ class MeanRadius:
             * jnp.exp(-incubation_time / self.time)
         )
 
+        nucleus_size = self.compute_nucleus_size(critical_radius, zeldovich_factor)
+
         print(f"Critical radius (m): {critical_radius}")
         print(f"Condensation rate (1/s): {condensation_rate}")
         print(f"Zeldovich factor: {zeldovich_factor}")
@@ -177,6 +173,7 @@ class MeanRadius:
         print(
             f"Energy exponent: {-gibbs_energy / (self.boltzmann_constant * self.temperature)}"
         )
+        print(f"Nucleus size (m): {nucleus_size}")
         print(f"Time exponent: {-incubation_time / self.time}")
         print(f"Nucleation rate (1/s): {nucleation_rate}")
 
