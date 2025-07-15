@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+from jax import jit
 
 jax.config.update("jax_enable_x64", True)
 
@@ -29,27 +30,67 @@ class MeanRadius:
         self.molar_volume_precipitate = (
             self.mean_atomic_volume_precipitate * self.avogadro_number
         )
+        self.total_composition = self.solution_composition
+
+        # This needs to be fit
         self.nucleation_site_density = jnp.array([1.0e20])  # number / m^3
 
-        self.time = jnp.array([1.0e-10])  # s
-        self.mean_radius = jnp.array([1.0])  # m
-        self.volume_fraction = jnp.array([0.0])  # m^3 / m^3
-        self.n_precipitates = jnp.array([0.0])  # number
-
-    @staticmethod
-    def compute_volumetric_driving_force(
-        temperature, solution_composition, molar_volume_precipitate
-    ):
-        R = 8.314  # J/mol/K
-        return (
-            -R
-            * temperature
-            * (
-                solution_composition * jnp.log(solution_composition)
-                + (1.0 - solution_composition) * jnp.log(1.0 - solution_composition)
-            )
-            / molar_volume_precipitate
+        self.coarsening_radius_constant = (
+            2.0
+            * self.surface_energy
+            * self.mean_atomic_volume_precipitate
+            / (self.boltzmann_constant * self.temperature)
         )
+        self.nuclei_rate = jnp.array([0.0])  # 1/s
+
+        # Initial conditions
+        self.time = jnp.array([1.0])  # s
+        self.mean_radius = jnp.array([1.0e-10])  # m
+        self.volume_fraction = jnp.array([0.0])  # m^3 / m^3
+        self.n_precipitates = jnp.array([1.0])  # number
+
+        # Cached variables
+        self.volumetric_driving_force = self.compute_volumetric_driving_force()
+        self.critical_radius = self.compute_critical_radius(
+            self.volumetric_driving_force, self.surface_energy
+        )
+        self.condensation_rate = self.compute_condensation_rate(
+            self.critical_radius,
+            self.diffusivity,
+            self.solution_composition,
+            self.lattice_parameter,
+        )
+        self.zeldovich_factor = self.compute_zeldovich_factor(
+            self.mean_atomic_volume_precipitate,
+            self.critical_radius,
+            self.surface_energy,
+            self.temperature,
+        )
+        self.incubation_time = self.compute_incubation_time(
+            self.condensation_rate, self.zeldovich_factor
+        )
+        self.gibbs_energy = self.compute_gibbs_energy(
+            self.critical_radius,
+            self.volumetric_driving_force,
+            self.surface_energy,
+        )
+        self.nucleus_size = self.compute_nucleus_size(
+            self.volumetric_driving_force,
+            self.surface_energy,
+        )
+
+    def compute_volumetric_driving_force(self):
+        value = (
+            self.R
+            * self.temperature
+            * (
+                self.solution_composition * jnp.log(self.solution_composition)
+                + (1.0 - self.solution_composition)
+                * jnp.log(1.0 - self.solution_composition)
+            )
+            / self.molar_volume_precipitate
+        )
+        return value
 
     @staticmethod
     def compute_supersaturation(
@@ -63,6 +104,7 @@ class MeanRadius:
         )
 
     @staticmethod
+    @jit
     def compute_gibbs_energy(radius, driving_force, surface_energy):
         return (
             4.0 / 3.0 * jnp.pi * radius**3 * driving_force
@@ -71,7 +113,11 @@ class MeanRadius:
 
     @staticmethod
     def compute_critical_radius(driving_force, surface_energy):
-        return 2.0 * surface_energy / driving_force
+        return -2.0 * surface_energy / driving_force
+
+    @staticmethod
+    def compute_critical_driving_force(driving_force, surface_energy):
+        return 16.0 * jnp.pi * surface_energy**3 / (3.0 * driving_force)
 
     @staticmethod
     def compute_zeldovich_factor(
@@ -79,8 +125,9 @@ class MeanRadius:
     ):
         boltzmann_constant = 1.380649e-23  # J/K
         return (
-            mean_atomic_volume
-            / (2.0 * jnp.pi * critical_radius)
+            2.0
+            * mean_atomic_volume
+            / (3.0 * critical_radius**2)
             * jnp.sqrt(surface_energy / (boltzmann_constant * temperature))
         )
 
@@ -106,9 +153,38 @@ class MeanRadius:
     def compute_incubation_time(condensation_rate, zeldovich_factor):
         return 4.0 / (2.0 * jnp.pi * condensation_rate * zeldovich_factor**2)
 
-    @staticmethod
-    def compute_nucleus_size(critical_radius, zeldovich_factor):
-        return critical_radius + 1.0 / (jnp.sqrt(jnp.pi) * zeldovich_factor)
+    def compute_nucleus_size(self, driving_force, surface_energy):
+        def critical_energy():
+            return (
+                self.compute_critical_driving_force(driving_force, surface_energy)
+                - self.boltzmann_constant * self.temperature
+            )
+
+        @jit
+        def f(x):
+            return (
+                self.compute_gibbs_energy(x, driving_force, surface_energy)
+                - critical_energy()
+            )
+
+        def bisection_method(f, a, b, tol=1e-6, steps=10000):
+            c = a
+            step = 0
+            while f(c) > tol:
+                if step > steps:
+                    raise ValueError("Bisection method did not converge")
+                c = (a + b) / 2.0
+                if f(c) * f(a) < 0.0:
+                    b = c
+                else:
+                    a = c
+                step += 1
+
+            return c
+
+        # Since we know that the root is somewhere about the critical radius we can
+        # start a simple bisection method using that as a lower bound
+        return bisection_method(f, self.critical_radius, 10.0 * self.critical_radius)
 
     @staticmethod
     def compute_alpha_parameter(
@@ -117,84 +193,115 @@ class MeanRadius:
         return mean_atomic_volume_solution / mean_atomic_volume_precipitate
 
     def compute_precipitation_rate(self):
-        # First calculate the rate for nucleation events
-        critical_radius = self.compute_critical_radius(
-            self.compute_volumetric_driving_force(
-                self.temperature,
-                self.solution_composition,
-                self.molar_volume_precipitate,
-            ),
-            self.surface_energy,
-        )
-
-        condensation_rate = self.compute_condensation_rate(
-            critical_radius,
-            self.diffusivity,
-            self.solution_composition,
-            self.lattice_parameter,
-        )
-
-        zeldovich_factor = self.compute_zeldovich_factor(
-            self.mean_atomic_volume_precipitate,
-            critical_radius,
-            self.surface_energy,
-            self.temperature,
-        )
-
-        incubation_time = self.compute_incubation_time(
-            condensation_rate, zeldovich_factor
-        )
-
-        gibbs_energy = self.compute_gibbs_energy(
-            critical_radius,
-            self.compute_volumetric_driving_force(
-                self.temperature,
-                self.solution_composition,
-                self.molar_volume_precipitate,
-            ),
-            self.surface_energy,
-        )
-
-        nucleation_rate = (
+        return (
             self.nucleation_site_density
-            * zeldovich_factor
-            * condensation_rate
-            * jnp.exp(-gibbs_energy / (self.boltzmann_constant * self.temperature))
-            * jnp.exp(-incubation_time / self.time)
+            * self.zeldovich_factor
+            * self.condensation_rate
+            * jnp.exp(-self.gibbs_energy / (self.boltzmann_constant * self.temperature))
+            * jnp.exp(-self.incubation_time / self.time)
         )
-
-        nucleus_size = self.compute_nucleus_size(critical_radius, zeldovich_factor)
-
-        print(f"Critical radius (m): {critical_radius}")
-        print(f"Condensation rate (1/s): {condensation_rate}")
-        print(f"Zeldovich factor: {zeldovich_factor}")
-        print(f"Incubation time (s): {incubation_time}")
-        print(f"Gibbs energy (J): {gibbs_energy}")
-        print(
-            f"Energy exponent: {-gibbs_energy / (self.boltzmann_constant * self.temperature)}"
-        )
-        print(f"Nucleus size (m): {nucleus_size}")
-        print(f"Time exponent: {-incubation_time / self.time}")
-        print(f"Nucleation rate (1/s): {nucleation_rate}")
 
     def compute_growth_rate(self):
-        return (
-            self.diffusivity
-            / self.mean_radius
-            * self.compute_supersaturation(
-                self.precipitate_composition,
-                self.solution_composition,
-                self.equilibrium_solution_composition,
-                self.alpha_parameter,
-            )
-            + 1.0 / self.n_precipitates
+        return self.diffusivity / self.mean_radius * self.compute_supersaturation(
+            self.precipitate_composition,
+            self.solution_composition,
+            self.equilibrium_solution_composition,
+            self.alpha_parameter,
+        ) + 1.0 / self.n_precipitates * self.nuclei_rate * (
+            self.nucleus_size - self.mean_radius
         )
 
     def compute_coarsening_rate(self):
-        pass
+        return (
+            (
+                4.0
+                / 27.0
+                * (
+                    self.equilibrium_solution_composition
+                    / (
+                        self.alpha_parameter * self.precipitate_composition
+                        - self.equilibrium_solution_composition
+                    )
+                )
+            )
+            * (self.coarsening_radius_constant * self.diffusivity / self.mean_radius**3)
+            * (
+                self.coarsening_radius_constant
+                * self.equilibrium_solution_composition
+                / (
+                    self.mean_radius
+                    * (
+                        self.precipitate_composition
+                        - self.equilibrium_solution_composition
+                    )
+                )
+                * (3.0 / (4.0 * jnp.pi * self.mean_radius**3) - self.n_precipitates)
+                - 3.0 * self.n_precipitates
+            )
+        )
+
+    def compute_coarsening_fraction(self):
+        if (self.mean_radius < 1.01 * self.critical_radius) and (
+            self.mean_radius > 0.99 * self.critical_radius
+        ):
+            return 1.0 - 1000.0 * (self.mean_radius / self.critical_radius - 1.0) ** 2
+        else:
+            return 1.0 - jax.scipy.special.erf(
+                4.0 * (self.mean_radius / self.critical_radius - 1.0)
+            )
+
+    def compute_nuclei_rate(self):
+        # Compute the various nucleation and coarsening rates
+        precipitation_rate = self.compute_precipitation_rate()
+        coarsening_rate = self.compute_coarsening_rate()
+        coarsening_fraction = self.compute_coarsening_fraction()
+
+        # Compute the rate of change of the number of precipitates
+        if -coarsening_rate > precipitation_rate:
+            return coarsening_fraction * coarsening_rate
+        else:
+            return precipitation_rate
+
+    def update_solute_fraction(self):
+        return (
+            self.total_composition
+            - self.alpha_parameter
+            * 4.0
+            / 3.0
+            * jnp.pi
+            * self.mean_radius**3
+            * self.n_precipitates
+            * self.precipitate_composition
+        ) / (
+            1.0
+            - self.alpha_parameter
+            * 4.0
+            / 3.0
+            * jnp.pi
+            * self.mean_radius**3
+            * self.n_precipitates
+        )
 
     def update_mean_radius(self):
-        pass
+        self.nuclei_rate = self.compute_nuclei_rate()
+        growth_rate = self.compute_growth_rate()
+        self.solution_composition = self.update_solute_fraction()
+
+        # Apply the runge-kutta method to update the mean radius
+        timestep = 10.0
+
+        self.n_precipitates = self.n_precipitates + self.nuclei_rate * timestep
+        self.mean_radius = self.mean_radius + growth_rate * timestep
+
+        self.time = self.time + timestep
+
+        print(f"Mean radius: {self.mean_radius}")
+        print(f"N precipitates: {self.n_precipitates}")
+        print(f"Time: {self.time}")
+        print(f"Solution composition: {self.solution_composition}")
 
     def compute_mean_radius(self, composition, temperature, pressure):
-        self.compute_precipitation_rate()
+        for i in range(10):
+            self.update_mean_radius()
+
+        return self.mean_radius
