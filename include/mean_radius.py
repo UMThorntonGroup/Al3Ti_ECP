@@ -43,12 +43,6 @@ class MeanRadius:
         )
         self.nuclei_rate = jnp.array([0.0])  # 1/s
 
-        # Initial conditions
-        self.time = jnp.array([1.0])  # s
-        self.mean_radius = jnp.array([1.0e-10])  # m
-        self.volume_fraction = jnp.array([0.0])  # m^3 / m^3
-        self.n_precipitates = jnp.array([1.0])  # number
-
         # Cached variables
         self.volumetric_driving_force = self.compute_volumetric_driving_force()
         self.critical_radius = self.compute_critical_radius(
@@ -79,18 +73,55 @@ class MeanRadius:
             self.surface_energy,
         )
 
+        # Initial conditions
+        self.time = jnp.array([1.0])  # s
+        self.mean_radius = self.critical_radius  # m
+        self.volume_fraction = jnp.array([0.0])  # m^3 / m^3
+        self.n_precipitates = jnp.array([1.0])  # number / m^3
+
     def compute_volumetric_driving_force(self):
-        value = (
-            self.R
-            * self.temperature
-            * (
-                self.solution_composition * jnp.log(self.solution_composition)
-                + (1.0 - self.solution_composition)
-                * jnp.log(1.0 - self.solution_composition)
+        assert self.solution_composition > 0.0
+        assert self.solution_composition < 1.0
+        assert self.temperature > 0.0
+
+        def ideal_mixing_term(composition):
+            return (
+                self.R
+                * self.temperature
+                * (
+                    composition * jnp.log(composition)
+                    + (1.0 - composition) * jnp.log(1.0 - composition)
+                )
             )
-            / self.molar_volume_precipitate
+
+        def ideal_mixing_term_derivative(composition):
+            return (
+                self.R
+                * self.temperature
+                * (jnp.log(composition) - jnp.log(1.0 - composition))
+            )
+
+        chemical_potential_precipitate = ideal_mixing_term_derivative(
+            self.equilibrium_solution_composition
+        ) * (
+            self.precipitate_composition - self.equilibrium_solution_composition
+        ) + ideal_mixing_term(
+            self.equilibrium_solution_composition
         )
-        return value
+
+        chemical_potential_supersaturated_solution = ideal_mixing_term_derivative(
+            self.solution_composition
+        ) * (
+            self.precipitate_composition - self.solution_composition
+        ) + ideal_mixing_term(
+            self.solution_composition
+        )
+
+        driving_force = (
+            chemical_potential_precipitate - chemical_potential_supersaturated_solution
+        ) / self.molar_volume_precipitate
+
+        return driving_force
 
     @staticmethod
     def compute_supersaturation(
@@ -104,7 +135,6 @@ class MeanRadius:
         )
 
     @staticmethod
-    @jit
     def compute_gibbs_energy(radius, driving_force, surface_energy):
         return (
             4.0 / 3.0 * jnp.pi * radius**3 * driving_force
@@ -117,7 +147,7 @@ class MeanRadius:
 
     @staticmethod
     def compute_critical_driving_force(driving_force, surface_energy):
-        return 16.0 * jnp.pi * surface_energy**3 / (3.0 * driving_force)
+        return 16.0 * jnp.pi * surface_energy**3 / (3.0 * driving_force**2)
 
     @staticmethod
     def compute_zeldovich_factor(
@@ -193,13 +223,14 @@ class MeanRadius:
         return mean_atomic_volume_solution / mean_atomic_volume_precipitate
 
     def compute_precipitation_rate(self):
-        return (
+        value = (
             self.nucleation_site_density
             * self.zeldovich_factor
             * self.condensation_rate
             * jnp.exp(-self.gibbs_energy / (self.boltzmann_constant * self.temperature))
             * jnp.exp(-self.incubation_time / self.time)
         )
+        return value
 
     def compute_growth_rate(self):
         return self.diffusivity / self.mean_radius * self.compute_supersaturation(
@@ -256,6 +287,10 @@ class MeanRadius:
         coarsening_rate = self.compute_coarsening_rate()
         coarsening_fraction = self.compute_coarsening_fraction()
 
+        print(f"Coarsening rate: {coarsening_rate}")
+        print(f"Precipitation rate: {precipitation_rate}")
+        print(f"Coarsening fraction: {coarsening_fraction}")
+
         # Compute the rate of change of the number of precipitates
         if -coarsening_rate > precipitation_rate:
             return coarsening_fraction * coarsening_rate
@@ -296,7 +331,7 @@ class MeanRadius:
         self.time = self.time + timestep
 
         print(f"Mean radius: {self.mean_radius}")
-        print(f"N precipitates: {self.n_precipitates}")
+        print(f"Precipitates per unit volume:: {self.n_precipitates}")
         print(f"Time: {self.time}")
         print(f"Solution composition: {self.solution_composition}")
 
