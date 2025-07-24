@@ -190,17 +190,18 @@ class MeanRadius:
                 - self.boltzmann_constant * self.temperature
             )
 
-        @jit
         def f(x):
-            return (
+            value = (
                 self.compute_gibbs_energy(x, driving_force, surface_energy)
                 - critical_energy()
             )
+            return value
 
-        def bisection_method(f, a, b, tol=1e-6, steps=10000):
+        def bisection_method(f, a, b, rel_tol=1e-4, steps=1000):
             c = a
+            tol = f(c) * rel_tol
             step = 0
-            while f(c) > tol:
+            while jnp.abs(f(c)) > tol:
                 if step > steps:
                     raise ValueError("Bisection method did not converge")
                 c = (a + b) / 2.0
@@ -214,7 +215,17 @@ class MeanRadius:
 
         # Since we know that the root is somewhere about the critical radius we can
         # start a simple bisection method using that as a lower bound
-        return bisection_method(f, self.critical_radius, 10.0 * self.critical_radius)
+        value = bisection_method(f, self.critical_radius, 2.0 * self.critical_radius)
+        paper_value = self.critical_radius + 0.5 * jnp.sqrt(
+            self.boltzmann_constant * self.temperature / (jnp.pi * surface_energy)
+        )
+
+        print(f"Critical radius (m): {self.critical_radius}")
+        print(f"My value (m): {value}")
+        print(f"Paper value (m): {paper_value}")
+
+        exit()
+        return value
 
     @staticmethod
     def compute_alpha_parameter(
