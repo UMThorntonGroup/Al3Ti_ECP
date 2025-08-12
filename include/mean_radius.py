@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 from jax import jit
+import matplotlib.pyplot as plt
 
 jax.config.update("jax_enable_x64", True)
 
@@ -69,7 +70,6 @@ class MeanRadius:
             self.surface_energy,
         )
         self.nucleus_size = self.compute_nucleus_size(
-            self.volumetric_driving_force,
             self.surface_energy,
         )
 
@@ -78,6 +78,13 @@ class MeanRadius:
         self.mean_radius = self.critical_radius  # m
         self.volume_fraction = jnp.array([0.0])  # m^3 / m^3
         self.n_precipitates = jnp.array([1.0])  # number / m^3
+
+        # Data arrays
+        self.time_evolution = []
+        self.mean_radius_evolution = []
+        self.volume_fraction_evolution = []
+        self.precipitate_density_evolution = []
+        self.solution_composition_evolution = []
 
     def compute_volumetric_driving_force(self):
         assert self.solution_composition > 0.0
@@ -155,9 +162,8 @@ class MeanRadius:
     ):
         boltzmann_constant = 1.380649e-23  # J/K
         return (
-            2.0
-            * mean_atomic_volume
-            / (3.0 * critical_radius**2)
+            mean_atomic_volume
+            / (2.0 * jnp.pi * critical_radius**2)
             * jnp.sqrt(surface_energy / (boltzmann_constant * temperature))
         )
 
@@ -183,49 +189,10 @@ class MeanRadius:
     def compute_incubation_time(condensation_rate, zeldovich_factor):
         return 4.0 / (2.0 * jnp.pi * condensation_rate * zeldovich_factor**2)
 
-    def compute_nucleus_size(self, driving_force, surface_energy):
-        def critical_energy():
-            return (
-                self.compute_critical_driving_force(driving_force, surface_energy)
-                - self.boltzmann_constant * self.temperature
-            )
-
-        def f(x):
-            value = (
-                self.compute_gibbs_energy(x, driving_force, surface_energy)
-                - critical_energy()
-            )
-            return value
-
-        def bisection_method(f, a, b, rel_tol=1e-4, steps=1000):
-            c = a
-            tol = f(c) * rel_tol
-            step = 0
-            while jnp.abs(f(c)) > tol:
-                if step > steps:
-                    raise ValueError("Bisection method did not converge")
-                c = (a + b) / 2.0
-                if f(c) * f(a) < 0.0:
-                    b = c
-                else:
-                    a = c
-                step += 1
-
-            return c
-
-        # Since we know that the root is somewhere about the critical radius we can
-        # start a simple bisection method using that as a lower bound
-        value = bisection_method(f, self.critical_radius, 2.0 * self.critical_radius)
-        paper_value = self.critical_radius + 0.5 * jnp.sqrt(
+    def compute_nucleus_size(self, surface_energy):
+        return self.critical_radius + 0.5 * jnp.sqrt(
             self.boltzmann_constant * self.temperature / (jnp.pi * surface_energy)
         )
-
-        print(f"Critical radius (m): {self.critical_radius}")
-        print(f"My value (m): {value}")
-        print(f"Paper value (m): {paper_value}")
-
-        exit()
-        return value
 
     @staticmethod
     def compute_alpha_parameter(
@@ -234,14 +201,13 @@ class MeanRadius:
         return mean_atomic_volume_solution / mean_atomic_volume_precipitate
 
     def compute_precipitation_rate(self):
-        value = (
+        return (
             self.nucleation_site_density
             * self.zeldovich_factor
             * self.condensation_rate
             * jnp.exp(-self.gibbs_energy / (self.boltzmann_constant * self.temperature))
             * jnp.exp(-self.incubation_time / self.time)
         )
-        return value
 
     def compute_growth_rate(self):
         return self.diffusivity / self.mean_radius * self.compute_supersaturation(
@@ -334,7 +300,7 @@ class MeanRadius:
         self.solution_composition = self.update_solute_fraction()
 
         # Apply the runge-kutta method to update the mean radius
-        timestep = 10.0
+        timestep = 0.1
 
         self.n_precipitates = self.n_precipitates + self.nuclei_rate * timestep
         self.mean_radius = self.mean_radius + growth_rate * timestep
@@ -346,8 +312,44 @@ class MeanRadius:
         print(f"Time: {self.time}")
         print(f"Solution composition: {self.solution_composition}")
 
+        # Append to the evolution arrays
+        self.time_evolution.append(self.time)
+        self.mean_radius_evolution.append(self.mean_radius)
+        self.volume_fraction_evolution.append(self.volume_fraction)
+        self.precipitate_density_evolution.append(self.n_precipitates)
+        self.solution_composition_evolution.append(self.solution_composition)
+
     def compute_mean_radius(self, composition, temperature, pressure):
-        for i in range(10):
+        for i in range(1):
             self.update_mean_radius()
+
+        # Plot the stuff
+        fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+        ax = axs[0, 0]
+        ax.plot(self.time_evolution, self.mean_radius_evolution)
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Mean radius (m)")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+
+        ax = axs[0, 1]
+        ax.plot(self.time_evolution, self.precipitate_density_evolution)
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Precipitate density (number/m^3)")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+
+        ax = axs[1, 0]
+        ax.plot(self.time_evolution, self.solution_composition_evolution)
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Concentration (%)")
+        ax.set_xscale("log")
+
+        ax = axs[1, 1]
+        ax.plot(self.time_evolution, self.volume_fraction_evolution)
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Volume fraction")
+        ax.set_xscale("log")
+        plt.savefig("mean_radius_evolution.png", dpi=300)
 
         return self.mean_radius
