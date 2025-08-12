@@ -1,9 +1,39 @@
 import jax
 import jax.numpy as jnp
-from jax import jit
 import matplotlib.pyplot as plt
 
 jax.config.update("jax_enable_x64", True)
+
+DEBUG = True
+
+
+class bcolors:
+    HEADER = "\033[95m"
+    OKBLUE = "\033[94m"
+    OKCYAN = "\033[96m"
+    OKGREEN = "\033[92m"
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
+
+
+def pprint(message, type="None"):
+    assert isinstance(message, str), "The message must be a string"
+    assert isinstance(type, str), "The message type must be a string"
+    if DEBUG:
+        new_message = message
+        if type == "Warning":
+            new_message = bcolors.WARNING + message + bcolors.ENDC
+        elif type == "Info":
+            new_message = bcolors.OKBLUE + message + bcolors.ENDC
+        elif type == "Good":
+            new_message = bcolors.OKGREEN + message + bcolors.ENDC
+        elif type == "Error":
+            new_message = bcolors.FAIL + message + bcolors.ENDC
+
+        print(new_message)
 
 
 class MeanRadius:
@@ -49,7 +79,7 @@ class MeanRadius:
             self.solution_composition,
             self.equilibrium_solution_composition,
             self.precipitate_composition,
-            self.mean_atomic_volume_precipitate,
+            self.molar_volume_precipitate,
             self.temperature,
         )
         self.critical_radius = self.compute_critical_radius(
@@ -166,9 +196,23 @@ class MeanRadius:
             solution_composition
         )
 
+        pprint(
+            f"Precipitate chemical potential (J/mol): {chemical_potential_precipitate}",
+            "Info",
+        )
+        pprint(
+            f"Solution chemical potential (J/mol): {chemical_potential_supersaturated_solution}",
+            "Info",
+        )
+        pprint(
+            f"Precipitate molar volume (m^3/mol): {molar_volume_precipitate}", "Info"
+        )
+
         driving_force = (
             chemical_potential_precipitate - chemical_potential_supersaturated_solution
         ) / molar_volume_precipitate
+
+        pprint(f"Volumetric driving force (J/m^3): {driving_force}", "Info")
 
         return driving_force
 
@@ -179,24 +223,116 @@ class MeanRadius:
         equilibrium_solution_composition,
         alpha_parameter,
     ):
-        return (solution_composition - equilibrium_solution_composition) / (
+        assert isinstance(
+            solution_composition, jax.Array
+        ), "The solution composition vector must be a JAX array"
+        assert isinstance(
+            equilibrium_solution_composition, jax.Array
+        ), "The equilibrium solution composition vector must be a JAX array"
+        assert isinstance(
+            precipitate_composition, jax.Array
+        ), "The precipitate composition vector must be a JAX array"
+        assert isinstance(
+            alpha_parameter, jax.Array
+        ), "The alpha parameter vector must be a JAX array"
+        assert jnp.all(
+            solution_composition > 0.0
+        ), "All solution compositions must be greater than 0.0"
+        assert jnp.all(
+            solution_composition < 1.0
+        ), "All solution compositions must be less than 1.0"
+        assert jnp.size(solution_composition) == jnp.size(
+            equilibrium_solution_composition
+        ), "The vectors must be the same size"
+        assert jnp.size(solution_composition) == jnp.size(
+            precipitate_composition
+        ), "The vectors must be the same size"
+        assert jnp.size(solution_composition) == jnp.size(
+            alpha_parameter
+        ), "The vectors must be the same size"
+
+        supersaturation = (solution_composition - equilibrium_solution_composition) / (
             alpha_parameter * precipitate_composition - equilibrium_solution_composition
         )
 
+        pprint(f"Supersaturation: {supersaturation}", "Info")
+
+        return supersaturation
+
     @staticmethod
     def compute_gibbs_energy(radius, driving_force, surface_energy):
-        return (
+        assert isinstance(radius, jax.Array), "The radius vector must be a JAX array"
+        assert isinstance(
+            driving_force, jax.Array
+        ), "The driving force must be a JAX array"
+        assert isinstance(
+            surface_energy, jax.Array
+        ), "The surface energy must be a JAX array"
+        assert jnp.all(
+            radius > 0.0
+        ), "All entries in the radius vector must be greater than 0.0"
+        assert jnp.all(
+            surface_energy > 0.0
+        ), "All entries in the surface energy vector must be greater than 0.0"
+        assert jnp.size(radius) == jnp.size(
+            driving_force
+        ), "The vectors must be the same size"
+        assert jnp.size(radius) == jnp.size(
+            surface_energy
+        ), "The vectors must be the same size"
+
+        gibbs_energy = (
             4.0 / 3.0 * jnp.pi * radius**3 * driving_force
             + 4.0 * jnp.pi * radius**2 * surface_energy
         )
 
+        pprint(f"Gibbs energy (J): {gibbs_energy}", "Info")
+
+        return gibbs_energy
+
     @staticmethod
     def compute_critical_radius(driving_force, surface_energy):
-        return -2.0 * surface_energy / driving_force
+        assert isinstance(
+            driving_force, jax.Array
+        ), "The driving force must be a JAX array"
+        assert isinstance(
+            surface_energy, jax.Array
+        ), "The surface energy must be a JAX array"
+        assert jnp.all(
+            surface_energy > 0.0
+        ), "All entries in the surface energy vector must be greater than 0.0"
+        assert jnp.size(driving_force) == jnp.size(
+            surface_energy
+        ), "The vectors must be the same size"
+
+        critical_radius = -2.0 * surface_energy / driving_force
+
+        pprint(f"Critical radius (m): {critical_radius}", "Info")
+
+        return critical_radius
 
     @staticmethod
     def compute_critical_driving_force(driving_force, surface_energy):
-        return 16.0 * jnp.pi * surface_energy**3 / (3.0 * driving_force**2)
+        assert isinstance(
+            driving_force, jax.Array
+        ), "The driving force must be a JAX array"
+        assert isinstance(
+            surface_energy, jax.Array
+        ), "The surface energy must be a JAX array"
+        assert jnp.all(
+            surface_energy > 0.0
+        ), "All entries in the surface energy vector must be greater than 0.0"
+        assert jnp.size(driving_force) == jnp.size(
+            surface_energy
+        ), "The vectors must be the same size"
+
+        critical_driving_force = (
+            16.0 * jnp.pi * surface_energy**3 / (3.0 * driving_force**2)
+        )
+
+        pprint(f"Critical driving force (J): {critical_driving_force}", "Info")
+
+        return critical_driving_force
 
     @staticmethod
     def compute_zeldovich_factor(
