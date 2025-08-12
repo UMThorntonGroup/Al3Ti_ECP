@@ -45,7 +45,7 @@ class MeanRadius:
         self.nuclei_rate = jnp.array([0.0])  # 1/s
 
         # Cached variables
-        self.volumetric_driving_force = self.compute_volumetric_driving_force()
+        self.volumetric_driving_force = self.compute_volumetric_driving_force(self.solution_composition, self.equilibrium_solution_composition, self.precipitate_composition, self.mean_atomic_volume_precipitate, self.temperature)
         self.critical_radius = self.compute_critical_radius(
             self.volumetric_driving_force, self.surface_energy
         )
@@ -70,7 +70,9 @@ class MeanRadius:
             self.surface_energy,
         )
         self.nucleus_size = self.compute_nucleus_size(
+            self.critical_radius, 
             self.surface_energy,
+            self.temperature
         )
 
         # Initial conditions
@@ -86,15 +88,16 @@ class MeanRadius:
         self.precipitate_density_evolution = []
         self.solution_composition_evolution = []
 
-    def compute_volumetric_driving_force(self):
-        assert self.solution_composition > 0.0
-        assert self.solution_composition < 1.0
-        assert self.temperature > 0.0
+    @staticmethod
+    def compute_volumetric_driving_force(solution_composition,equilibrium_solution_composition, precipitate_composition,molar_volume_precipitate, temperature, R= 8.314):
+        assert solution_composition > 0.0
+        assert solution_composition< 1.0
+        assert temperature > 0.0
 
         def ideal_mixing_term(composition):
             return (
-                self.R
-                * self.temperature
+                R
+                * temperature
                 * (
                     composition * jnp.log(composition)
                     + (1.0 - composition) * jnp.log(1.0 - composition)
@@ -103,30 +106,30 @@ class MeanRadius:
 
         def ideal_mixing_term_derivative(composition):
             return (
-                self.R
-                * self.temperature
+                R
+                * temperature
                 * (jnp.log(composition) - jnp.log(1.0 - composition))
             )
 
         chemical_potential_precipitate = ideal_mixing_term_derivative(
-            self.equilibrium_solution_composition
+            equilibrium_solution_composition
         ) * (
-            self.precipitate_composition - self.equilibrium_solution_composition
+            precipitate_composition - equilibrium_solution_composition
         ) + ideal_mixing_term(
-            self.equilibrium_solution_composition
+            equilibrium_solution_composition
         )
 
         chemical_potential_supersaturated_solution = ideal_mixing_term_derivative(
-            self.solution_composition
+            solution_composition
         ) * (
-            self.precipitate_composition - self.solution_composition
+            precipitate_composition - solution_composition
         ) + ideal_mixing_term(
-            self.solution_composition
+            solution_composition
         )
 
         driving_force = (
             chemical_potential_precipitate - chemical_potential_supersaturated_solution
-        ) / self.molar_volume_precipitate
+        ) / molar_volume_precipitate
 
         return driving_force
 
@@ -189,9 +192,10 @@ class MeanRadius:
     def compute_incubation_time(condensation_rate, zeldovich_factor):
         return 4.0 / (2.0 * jnp.pi * condensation_rate * zeldovich_factor**2)
 
-    def compute_nucleus_size(self, surface_energy):
-        return self.critical_radius + 0.5 * jnp.sqrt(
-            self.boltzmann_constant * self.temperature / (jnp.pi * surface_energy)
+    @staticmethod
+    def compute_nucleus_size(critical_radius, surface_energy, temperature, boltzmann_constant= 1.380e-23):
+        return critical_radius + 0.5 * jnp.sqrt(
+            boltzmann_constant * temperature / (jnp.pi * surface_energy)
         )
 
     @staticmethod
@@ -209,13 +213,13 @@ class MeanRadius:
             * jnp.exp(-self.incubation_time / self.time)
         )
 
-    def compute_growth_rate(self):
+    def compute_growth_rate(self, nuclei_rate):
         return self.diffusivity / self.mean_radius * self.compute_supersaturation(
             self.precipitate_composition,
             self.solution_composition,
             self.equilibrium_solution_composition,
             self.alpha_parameter,
-        ) + 1.0 / self.n_precipitates * self.nuclei_rate * (
+        ) + 1.0 / self.n_precipitates * nuclei_rate * (
             self.nucleus_size - self.mean_radius
         )
 
@@ -268,6 +272,7 @@ class MeanRadius:
         print(f"Precipitation rate: {precipitation_rate}")
         print(f"Coarsening fraction: {coarsening_fraction}")
 
+
         # Compute the rate of change of the number of precipitates
         if -coarsening_rate > precipitation_rate:
             return coarsening_fraction * coarsening_rate
@@ -275,6 +280,7 @@ class MeanRadius:
             return precipitation_rate
 
     def update_solute_fraction(self):
+        # This might be getting a lot of round-off error
         return (
             self.total_composition
             - self.alpha_parameter
@@ -295,14 +301,14 @@ class MeanRadius:
         )
 
     def update_mean_radius(self):
-        self.nuclei_rate = self.compute_nuclei_rate()
-        growth_rate = self.compute_growth_rate()
+        nuclei_rate = self.compute_nuclei_rate()
+        growth_rate = self.compute_growth_rate(nuclei_rate)
         self.solution_composition = self.update_solute_fraction()
 
         # Apply the runge-kutta method to update the mean radius
         timestep = 0.1
 
-        self.n_precipitates = self.n_precipitates + self.nuclei_rate * timestep
+        self.n_precipitates = self.n_precipitates + nuclei_rate * timestep
         self.mean_radius = self.mean_radius + growth_rate * timestep
 
         self.time = self.time + timestep
@@ -312,6 +318,8 @@ class MeanRadius:
         print(f"Time: {self.time}")
         print(f"Solution composition: {self.solution_composition}")
 
+        assert self.mean_radius == 3.89029844e-10,f"Mean radius is {self.mean_radius}"
+
         # Append to the evolution arrays
         self.time_evolution.append(self.time)
         self.mean_radius_evolution.append(self.mean_radius)
@@ -320,6 +328,7 @@ class MeanRadius:
         self.solution_composition_evolution.append(self.solution_composition)
 
     def compute_mean_radius(self, composition, temperature, pressure):
+        print("\n\n\nBeginning calulation of mean radius\n")
         for i in range(1):
             self.update_mean_radius()
 
