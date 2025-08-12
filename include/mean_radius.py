@@ -45,7 +45,13 @@ class MeanRadius:
         self.nuclei_rate = jnp.array([0.0])  # 1/s
 
         # Cached variables
-        self.volumetric_driving_force = self.compute_volumetric_driving_force(self.solution_composition, self.equilibrium_solution_composition, self.precipitate_composition, self.mean_atomic_volume_precipitate, self.temperature)
+        self.volumetric_driving_force = self.compute_volumetric_driving_force(
+            self.solution_composition,
+            self.equilibrium_solution_composition,
+            self.precipitate_composition,
+            self.mean_atomic_volume_precipitate,
+            self.temperature,
+        )
         self.critical_radius = self.compute_critical_radius(
             self.volumetric_driving_force, self.surface_energy
         )
@@ -70,9 +76,7 @@ class MeanRadius:
             self.surface_energy,
         )
         self.nucleus_size = self.compute_nucleus_size(
-            self.critical_radius, 
-            self.surface_energy,
-            self.temperature
+            self.critical_radius, self.surface_energy, self.temperature
         )
 
         # Initial conditions
@@ -89,10 +93,51 @@ class MeanRadius:
         self.solution_composition_evolution = []
 
     @staticmethod
-    def compute_volumetric_driving_force(solution_composition,equilibrium_solution_composition, precipitate_composition,molar_volume_precipitate, temperature, R= 8.314):
-        assert solution_composition > 0.0
-        assert solution_composition< 1.0
-        assert temperature > 0.0
+    def compute_volumetric_driving_force(
+        solution_composition,
+        equilibrium_solution_composition,
+        precipitate_composition,
+        molar_volume_precipitate,
+        temperature,
+        R=jnp.array([8.314]),
+    ):
+        assert isinstance(
+            solution_composition, jax.Array
+        ), "The solution composition vector must be a JAX array"
+        assert isinstance(
+            equilibrium_solution_composition, jax.Array
+        ), "The equilibrium solution composition vector must be a JAX array"
+        assert isinstance(
+            precipitate_composition, jax.Array
+        ), "The precipitate composition vector must be a JAX array"
+        assert isinstance(
+            molar_volume_precipitate, jax.Array
+        ), "The molar volume of the precipitate vector must be a JAX array"
+        assert isinstance(
+            temperature, jax.Array
+        ), "The temperature vector must be a JAX array"
+        assert isinstance(R, jax.Array), "The gas constant must be a JAX array"
+        assert jnp.all(
+            solution_composition > 0.0
+        ), "All solution compositions must be greater than 0.0"
+        assert jnp.all(
+            solution_composition < 1.0
+        ), "All solution compositions must be less than 1.0"
+        assert jnp.all(
+            temperature > 0.0
+        ), "All the temperatues must be greater than 0.0"
+        assert jnp.size(solution_composition) == jnp.size(
+            equilibrium_solution_composition
+        ), "The vectors must be the same size"
+        assert jnp.size(solution_composition) == jnp.size(
+            precipitate_composition
+        ), "The vectors must be the same size"
+        assert jnp.size(solution_composition) == jnp.size(
+            molar_volume_precipitate
+        ), "The vectors must be the same size"
+        assert jnp.size(solution_composition) == jnp.size(
+            temperature
+        ), "The vectors must be the same size"
 
         def ideal_mixing_term(composition):
             return (
@@ -105,11 +150,7 @@ class MeanRadius:
             )
 
         def ideal_mixing_term_derivative(composition):
-            return (
-                R
-                * temperature
-                * (jnp.log(composition) - jnp.log(1.0 - composition))
-            )
+            return R * temperature * (jnp.log(composition) - jnp.log(1.0 - composition))
 
         chemical_potential_precipitate = ideal_mixing_term_derivative(
             equilibrium_solution_composition
@@ -121,9 +162,7 @@ class MeanRadius:
 
         chemical_potential_supersaturated_solution = ideal_mixing_term_derivative(
             solution_composition
-        ) * (
-            precipitate_composition - solution_composition
-        ) + ideal_mixing_term(
+        ) * (precipitate_composition - solution_composition) + ideal_mixing_term(
             solution_composition
         )
 
@@ -193,7 +232,9 @@ class MeanRadius:
         return 4.0 / (2.0 * jnp.pi * condensation_rate * zeldovich_factor**2)
 
     @staticmethod
-    def compute_nucleus_size(critical_radius, surface_energy, temperature, boltzmann_constant= 1.380e-23):
+    def compute_nucleus_size(
+        critical_radius, surface_energy, temperature, boltzmann_constant=1.380e-23
+    ):
         return critical_radius + 0.5 * jnp.sqrt(
             boltzmann_constant * temperature / (jnp.pi * surface_energy)
         )
@@ -272,7 +313,6 @@ class MeanRadius:
         print(f"Precipitation rate: {precipitation_rate}")
         print(f"Coarsening fraction: {coarsening_fraction}")
 
-
         # Compute the rate of change of the number of precipitates
         if -coarsening_rate > precipitation_rate:
             return coarsening_fraction * coarsening_rate
@@ -318,7 +358,7 @@ class MeanRadius:
         print(f"Time: {self.time}")
         print(f"Solution composition: {self.solution_composition}")
 
-        assert self.mean_radius == 3.89029844e-10,f"Mean radius is {self.mean_radius}"
+        assert self.mean_radius == 3.89029844e-10, f"Mean radius is {self.mean_radius}"
 
         # Append to the evolution arrays
         self.time_evolution.append(self.time)
