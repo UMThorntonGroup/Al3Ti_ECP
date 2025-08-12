@@ -236,6 +236,8 @@ class MeanRadius:
 
         pprint(f"Volumetric driving force (J/m^3): {driving_force}", "Info")
 
+        AssertAllNegative(driving_force)
+
         return driving_force
 
     @staticmethod
@@ -245,33 +247,26 @@ class MeanRadius:
         equilibrium_solution_composition,
         alpha_parameter,
     ):
-        assert isinstance(
-            solution_composition, jax.Array
-        ), "The solution composition vector must be a JAX array"
-        assert isinstance(
-            equilibrium_solution_composition, jax.Array
-        ), "The equilibrium solution composition vector must be a JAX array"
-        assert isinstance(
-            precipitate_composition, jax.Array
-        ), "The precipitate composition vector must be a JAX array"
-        assert isinstance(
-            alpha_parameter, jax.Array
-        ), "The alpha parameter vector must be a JAX array"
-        assert jnp.all(
-            solution_composition > 0.0
-        ), "All solution compositions must be greater than 0.0"
-        assert jnp.all(
-            solution_composition < 1.0
-        ), "All solution compositions must be less than 1.0"
-        assert jnp.size(solution_composition) == jnp.size(
-            equilibrium_solution_composition
-        ), "The vectors must be the same size"
-        assert jnp.size(solution_composition) == jnp.size(
-            precipitate_composition
-        ), "The vectors must be the same size"
-        assert jnp.size(solution_composition) == jnp.size(
-            alpha_parameter
-        ), "The vectors must be the same size"
+        AssertJAXArray(
+            precipitate_composition,
+            solution_composition,
+            equilibrium_solution_composition,
+            alpha_parameter,
+        )
+        AssertInclusiveBound(
+            0.0,
+            1.0,
+            solution_composition,
+            equilibrium_solution_composition,
+            precipitate_composition,
+        )
+        AssertAllPositive(alpha_parameter)
+        AssertSameSize(
+            precipitate_composition,
+            solution_composition,
+            equilibrium_solution_composition,
+            alpha_parameter,
+        )
 
         supersaturation = (solution_composition - equilibrium_solution_composition) / (
             alpha_parameter * precipitate_composition - equilibrium_solution_composition
@@ -279,29 +274,16 @@ class MeanRadius:
 
         pprint(f"Supersaturation: {supersaturation}", "Info")
 
+        AssertInclusiveBound(0.0, 1.0, supersaturation)
+
         return supersaturation
 
     @staticmethod
     def compute_gibbs_energy(radius, driving_force, surface_energy):
-        assert isinstance(radius, jax.Array), "The radius vector must be a JAX array"
-        assert isinstance(
-            driving_force, jax.Array
-        ), "The driving force must be a JAX array"
-        assert isinstance(
-            surface_energy, jax.Array
-        ), "The surface energy must be a JAX array"
-        assert jnp.all(
-            radius > 0.0
-        ), "All entries in the radius vector must be greater than 0.0"
-        assert jnp.all(
-            surface_energy > 0.0
-        ), "All entries in the surface energy vector must be greater than 0.0"
-        assert jnp.size(radius) == jnp.size(
-            driving_force
-        ), "The vectors must be the same size"
-        assert jnp.size(radius) == jnp.size(
-            surface_energy
-        ), "The vectors must be the same size"
+        AssertJAXArray(radius, driving_force, surface_energy)
+        AssertAllNegative(driving_force)
+        AssertAllPositive(radius, surface_energy)
+        AssertSameSize(radius, driving_force, surface_energy)
 
         gibbs_energy = (
             4.0 / 3.0 * jnp.pi * radius**3 * driving_force
@@ -314,45 +296,33 @@ class MeanRadius:
 
     @staticmethod
     def compute_critical_radius(driving_force, surface_energy):
-        assert isinstance(
-            driving_force, jax.Array
-        ), "The driving force must be a JAX array"
-        assert isinstance(
-            surface_energy, jax.Array
-        ), "The surface energy must be a JAX array"
-        assert jnp.all(
-            surface_energy > 0.0
-        ), "All entries in the surface energy vector must be greater than 0.0"
-        assert jnp.size(driving_force) == jnp.size(
-            surface_energy
-        ), "The vectors must be the same size"
+        AssertJAXArray(driving_force, surface_energy)
+        AssertAllNegative(driving_force)
+        AssertAllPositive(surface_energy)
+        AssertSameSize(driving_force, surface_energy)
 
         critical_radius = -2.0 * surface_energy / driving_force
 
         pprint(f"Critical radius (m): {critical_radius}", "Info")
 
+        AssertAllPositive(critical_radius)
+
         return critical_radius
 
     @staticmethod
     def compute_critical_driving_force(driving_force, surface_energy):
-        assert isinstance(
-            driving_force, jax.Array
-        ), "The driving force must be a JAX array"
-        assert isinstance(
-            surface_energy, jax.Array
-        ), "The surface energy must be a JAX array"
-        assert jnp.all(
-            surface_energy > 0.0
-        ), "All entries in the surface energy vector must be greater than 0.0"
-        assert jnp.size(driving_force) == jnp.size(
-            surface_energy
-        ), "The vectors must be the same size"
+        AssertJAXArray(driving_force, surface_energy)
+        AssertAllNegative(driving_force)
+        AssertAllPositive(surface_energy)
+        AssertSameSize(driving_force, surface_energy)
 
         critical_driving_force = (
             16.0 * jnp.pi * surface_energy**3 / (3.0 * driving_force**2)
         )
 
         pprint(f"Critical driving force (J): {critical_driving_force}", "Info")
+
+        AssertAllPositive(critical_driving_force)
 
         return critical_driving_force
 
@@ -364,60 +334,121 @@ class MeanRadius:
         temperature,
         boltzmann_constant=jnp.array([1.380e-23]),
     ):
-        assert isinstance(
-            mean_atomic_volume, jax.Array
-        ), "The mean atomic volume vector must be a JAX array"
-        assert isinstance(
-            critical_radius, jax.Array
-        ), "The critical radius vector must be a JAX array"
-        assert isinstance(
-            surface_energy, jax.Array
-        ), "The surface energy vector must be a JAX array"
-        assert isinstance(
-            temperature, jax.Array
-        ), "The temperature vector must be a JAX array"
+        AssertJAXArray(
+            mean_atomic_volume,
+            critical_radius,
+            surface_energy,
+            temperature,
+            boltzmann_constant,
+        )
+        AssertAllPositive(
+            mean_atomic_volume,
+            critical_radius,
+            surface_energy,
+            temperature,
+            boltzmann_constant,
+        )
+        AssertSameSize(
+            mean_atomic_volume,
+            critical_radius,
+            surface_energy,
+            temperature,
+            boltzmann_constant,
+        )
 
-        return (
+        zeldovich_factor = (
             mean_atomic_volume
             / (2.0 * jnp.pi * critical_radius**2)
             * jnp.sqrt(surface_energy / (boltzmann_constant * temperature))
         )
 
+        pprint(f"Zeldovich factor: {zeldovich_factor}", "Info")
+
+        AssertAllPositive(zeldovich_factor)
+
+        return zeldovich_factor
+
     @staticmethod
     def compute_condensation_rate(
         critical_radius, diffusivity, mean_solute_atom_fraction, lattice_parameter
     ):
-        # We have to be careful here with roundoff errors, so we'll
-        # nondimensionalize the length scale by dividing by the critical radius
-        critical_radius_nondimensional = critical_radius / critical_radius
-        diffusivity_nondimensional = diffusivity / critical_radius**2
-        lattice_parameter_nondimensional = lattice_parameter / critical_radius
-        return (
+        AssertJAXArray(
+            critical_radius, diffusivity, mean_solute_atom_fraction, lattice_parameter
+        )
+        AssertAllPositive(
+            critical_radius, diffusivity, mean_solute_atom_fraction, lattice_parameter
+        )
+        AssertSameSize(
+            critical_radius, diffusivity, mean_solute_atom_fraction, lattice_parameter
+        )
+
+        condensation_rate = (
             4.0
             * jnp.pi
-            * critical_radius_nondimensional**2
-            * diffusivity_nondimensional
+            * critical_radius**2
+            * diffusivity
             * mean_solute_atom_fraction
-            / lattice_parameter_nondimensional**4
+            / lattice_parameter**4
         )
+
+        pprint(f"Condensation rate (1/s): {condensation_rate}", "Info")
+
+        AssertAllPositive(condensation_rate)
+
+        return condensation_rate
 
     @staticmethod
     def compute_incubation_time(condensation_rate, zeldovich_factor):
-        return 4.0 / (2.0 * jnp.pi * condensation_rate * zeldovich_factor**2)
+        AssertJAXArray(condensation_rate, zeldovich_factor)
+        AssertAllPositive(condensation_rate, zeldovich_factor)
+        AssertSameSize(condensation_rate, zeldovich_factor)
+
+        incubation_time = 4.0 / (2.0 * jnp.pi * condensation_rate * zeldovich_factor**2)
+
+        pprint(f"Incubation time (s): {incubation_time}", "Info")
+
+        AssertAllPositive(incubation_time)
+
+        return incubation_time
 
     @staticmethod
     def compute_nucleus_size(
-        critical_radius, surface_energy, temperature, boltzmann_constant=1.380e-23
+        critical_radius,
+        surface_energy,
+        temperature,
+        boltzmann_constant=jnp.array([1.380e-23]),
     ):
-        return critical_radius + 0.5 * jnp.sqrt(
+        AssertJAXArray(critical_radius, surface_energy, temperature, boltzmann_constant)
+        AssertAllPositive(
+            critical_radius, surface_energy, temperature, boltzmann_constant
+        )
+        AssertSameSize(critical_radius, surface_energy, temperature, boltzmann_constant)
+
+        nucleus_size = critical_radius + 0.5 * jnp.sqrt(
             boltzmann_constant * temperature / (jnp.pi * surface_energy)
         )
+
+        pprint(f"Nucleus size (m): {nucleus_size}", "Info")
+
+        AssertAllPositive(nucleus_size)
+
+        return nucleus_size
 
     @staticmethod
     def compute_alpha_parameter(
         mean_atomic_volume_solution, mean_atomic_volume_precipitate
     ):
-        return mean_atomic_volume_solution / mean_atomic_volume_precipitate
+        AssertJAXArray(mean_atomic_volume_precipitate, mean_atomic_volume_solution)
+        AssertAllPositive(mean_atomic_volume_precipitate, mean_atomic_volume_solution)
+        AssertSameSize(mean_atomic_volume_precipitate, mean_atomic_volume_solution)
+
+        alpha_parameter = mean_atomic_volume_solution / mean_atomic_volume_precipitate
+
+        pprint(f"Alpha parameter: {alpha_parameter}", "Info")
+
+        AssertAllPositive(alpha_parameter)
+
+        return alpha_parameter
 
     def compute_precipitation_rate(self):
         return (
