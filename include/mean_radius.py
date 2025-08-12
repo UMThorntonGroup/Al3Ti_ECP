@@ -36,6 +36,42 @@ def pprint(message, type="None"):
         print(new_message)
 
 
+def AssertJAXArray(*args):
+    for value in args:
+        assert isinstance(value, jax.Array), "The passed array must be a JAX array"
+
+
+def AssertAllPositive(*args):
+    for value in args:
+        assert jnp.all(value > 0.0), "The passed array must have all positive entries"
+
+
+def AssertAllNegative(*args):
+    for value in args:
+        assert jnp.all(value < 0.0), "The passed array must have all negative entries"
+
+
+def AssertInclusiveBound(lower_bound, upper_bound, *args):
+    assert (
+        lower_bound <= upper_bound
+    ), "The lower bound must be less than or equal to the upper bound"
+    for value in args:
+        assert jnp.all(
+            jnp.logical_and(value >= lower_bound, value <= upper_bound)
+        ), "The passed array must be bound for all entries"
+
+
+def AssertSameSize(*args):
+    if not args:
+        return
+
+    first_entry_size = jnp.size(args[0])
+    for value in args:
+        assert (
+            jnp.size(value) == first_entry_size
+        ), "The passed arrays must all have the same size"
+
+
 class MeanRadius:
     def __init__(self):
         # Input parameters
@@ -131,43 +167,29 @@ class MeanRadius:
         temperature,
         R=jnp.array([8.314]),
     ):
-        assert isinstance(
-            solution_composition, jax.Array
-        ), "The solution composition vector must be a JAX array"
-        assert isinstance(
-            equilibrium_solution_composition, jax.Array
-        ), "The equilibrium solution composition vector must be a JAX array"
-        assert isinstance(
-            precipitate_composition, jax.Array
-        ), "The precipitate composition vector must be a JAX array"
-        assert isinstance(
-            molar_volume_precipitate, jax.Array
-        ), "The molar volume of the precipitate vector must be a JAX array"
-        assert isinstance(
-            temperature, jax.Array
-        ), "The temperature vector must be a JAX array"
-        assert isinstance(R, jax.Array), "The gas constant must be a JAX array"
-        assert jnp.all(
-            solution_composition > 0.0
-        ), "All solution compositions must be greater than 0.0"
-        assert jnp.all(
-            solution_composition < 1.0
-        ), "All solution compositions must be less than 1.0"
-        assert jnp.all(
-            temperature > 0.0
-        ), "All the temperatues must be greater than 0.0"
-        assert jnp.size(solution_composition) == jnp.size(
-            equilibrium_solution_composition
-        ), "The vectors must be the same size"
-        assert jnp.size(solution_composition) == jnp.size(
-            precipitate_composition
-        ), "The vectors must be the same size"
-        assert jnp.size(solution_composition) == jnp.size(
-            molar_volume_precipitate
-        ), "The vectors must be the same size"
-        assert jnp.size(solution_composition) == jnp.size(
-            temperature
-        ), "The vectors must be the same size"
+        AssertJAXArray(
+            solution_composition,
+            equilibrium_solution_composition,
+            precipitate_composition,
+            molar_volume_precipitate,
+            temperature,
+            R,
+        )
+        AssertInclusiveBound(
+            0.0,
+            1.0,
+            solution_composition,
+            equilibrium_solution_composition,
+            precipitate_composition,
+        )
+        AssertAllPositive(temperature, molar_volume_precipitate)
+        AssertSameSize(
+            solution_composition,
+            equilibrium_solution_composition,
+            precipitate_composition,
+            molar_volume_precipitate,
+            temperature,
+        )
 
         def ideal_mixing_term(composition):
             return (
@@ -336,9 +358,25 @@ class MeanRadius:
 
     @staticmethod
     def compute_zeldovich_factor(
-        mean_atomic_volume, critical_radius, surface_energy, temperature
+        mean_atomic_volume,
+        critical_radius,
+        surface_energy,
+        temperature,
+        boltzmann_constant=jnp.array([1.380e-23]),
     ):
-        boltzmann_constant = 1.380649e-23  # J/K
+        assert isinstance(
+            mean_atomic_volume, jax.Array
+        ), "The mean atomic volume vector must be a JAX array"
+        assert isinstance(
+            critical_radius, jax.Array
+        ), "The critical radius vector must be a JAX array"
+        assert isinstance(
+            surface_energy, jax.Array
+        ), "The surface energy vector must be a JAX array"
+        assert isinstance(
+            temperature, jax.Array
+        ), "The temperature vector must be a JAX array"
+
         return (
             mean_atomic_volume
             / (2.0 * jnp.pi * critical_radius**2)
