@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 jax.config.update("jax_enable_x64", True)
 
-DEBUG = True
+DEBUG = False
 
 
 class bcolors:
@@ -85,22 +85,19 @@ class MeanRadius:
         self.lattice_parameter = jnp.array([4.04e-10])  # m
         self.temperature = jnp.array([433.0])  # K
 
+        # This needs to be fit
+        self.nucleation_site_density = jnp.array([1.0e20])  # number / m^3
+
         # Constants
         self.R = 8.314  # J/mol/K
         self.boltzmann_constant = 1.380e-23  # J/K
         self.avogadro_number = 6.022e23  # 1/mol
 
         # Calculated parameters
-        self.alpha_parameter = self.compute_alpha_parameter(
-            self.mean_atomic_volume_solution, self.mean_atomic_volume_precipitate
-        )
         self.molar_volume_precipitate = (
             self.mean_atomic_volume_precipitate * self.avogadro_number
         )
         self.total_composition = self.solution_composition
-
-        # This needs to be fit
-        self.nucleation_site_density = jnp.array([1.0e20])  # number / m^3
 
         self.coarsening_radius_constant = (
             2.0
@@ -110,7 +107,6 @@ class MeanRadius:
         )
         self.nuclei_rate = jnp.array([0.0])  # 1/s
 
-        # Cached variables
         self.volumetric_driving_force = self.compute_volumetric_driving_force(
             self.solution_composition,
             self.equilibrium_solution_composition,
@@ -120,29 +116,6 @@ class MeanRadius:
         )
         self.critical_radius = self.compute_critical_radius(
             self.volumetric_driving_force, self.surface_energy
-        )
-        self.condensation_rate = self.compute_condensation_rate(
-            self.critical_radius,
-            self.diffusivity,
-            self.solution_composition,
-            self.lattice_parameter,
-        )
-        self.zeldovich_factor = self.compute_zeldovich_factor(
-            self.mean_atomic_volume_precipitate,
-            self.critical_radius,
-            self.surface_energy,
-            self.temperature,
-        )
-        self.incubation_time = self.compute_incubation_time(
-            self.condensation_rate, self.zeldovich_factor
-        )
-        self.gibbs_energy = self.compute_gibbs_energy(
-            self.critical_radius,
-            self.volumetric_driving_force,
-            self.surface_energy,
-        )
-        self.nucleus_size = self.compute_nucleus_size(
-            self.critical_radius, self.surface_energy, self.temperature
         )
 
         # Initial conditions
@@ -329,31 +302,35 @@ class MeanRadius:
     @staticmethod
     def compute_zeldovich_factor(
         mean_atomic_volume,
-        critical_radius,
+        driving_force,
         surface_energy,
         temperature,
         boltzmann_constant=jnp.array([1.380e-23]),
     ):
         AssertJAXArray(
             mean_atomic_volume,
-            critical_radius,
+            driving_force,
             surface_energy,
             temperature,
             boltzmann_constant,
         )
         AssertAllPositive(
             mean_atomic_volume,
-            critical_radius,
             surface_energy,
             temperature,
             boltzmann_constant,
         )
+        AssertAllNegative(driving_force)
         AssertSameSize(
             mean_atomic_volume,
-            critical_radius,
+            driving_force,
             surface_energy,
             temperature,
             boltzmann_constant,
+        )
+
+        critical_radius = MeanRadius.compute_critical_radius(
+            driving_force, surface_energy
         )
 
         zeldovich_factor = (
@@ -370,16 +347,33 @@ class MeanRadius:
 
     @staticmethod
     def compute_condensation_rate(
-        critical_radius, diffusivity, mean_solute_atom_fraction, lattice_parameter
+        driving_force,
+        surface_energy,
+        diffusivity,
+        mean_solute_atom_fraction,
+        lattice_parameter,
     ):
         AssertJAXArray(
-            critical_radius, diffusivity, mean_solute_atom_fraction, lattice_parameter
+            driving_force,
+            surface_energy,
+            diffusivity,
+            mean_solute_atom_fraction,
+            lattice_parameter,
         )
         AssertAllPositive(
-            critical_radius, diffusivity, mean_solute_atom_fraction, lattice_parameter
+            diffusivity, surface_energy, mean_solute_atom_fraction, lattice_parameter
         )
+        AssertAllNegative(driving_force)
         AssertSameSize(
-            critical_radius, diffusivity, mean_solute_atom_fraction, lattice_parameter
+            driving_force,
+            surface_energy,
+            diffusivity,
+            mean_solute_atom_fraction,
+            lattice_parameter,
+        )
+
+        critical_radius = MeanRadius.compute_critical_radius(
+            driving_force, surface_energy
         )
 
         condensation_rate = (
@@ -413,16 +407,19 @@ class MeanRadius:
 
     @staticmethod
     def compute_nucleus_size(
-        critical_radius,
+        driving_force,
         surface_energy,
         temperature,
         boltzmann_constant=jnp.array([1.380e-23]),
     ):
-        AssertJAXArray(critical_radius, surface_energy, temperature, boltzmann_constant)
-        AssertAllPositive(
-            critical_radius, surface_energy, temperature, boltzmann_constant
+        AssertJAXArray(driving_force, surface_energy, temperature, boltzmann_constant)
+        AssertAllPositive(surface_energy, temperature, boltzmann_constant)
+        AssertAllNegative(driving_force)
+        AssertSameSize(driving_force, surface_energy, temperature, boltzmann_constant)
+
+        critical_radius = MeanRadius.compute_critical_radius(
+            driving_force, surface_energy
         )
-        AssertSameSize(critical_radius, surface_energy, temperature, boltzmann_constant)
 
         nucleus_size = critical_radius + 0.5 * jnp.sqrt(
             boltzmann_constant * temperature / (jnp.pi * surface_energy)
@@ -743,40 +740,70 @@ class MeanRadius:
         return solute_fraction
 
     def update_mean_radius(self):
+        driving_force = self.compute_volumetric_driving_force(
+            self.solution_composition,
+            self.equilibrium_solution_composition,
+            self.precipitate_composition,
+            self.molar_volume_precipitate,
+            self.temperature,
+        )
+        critical_radius = self.compute_critical_radius(
+            driving_force, self.surface_energy
+        )
+        condensation_rate = self.compute_condensation_rate(
+            driving_force,
+            self.surface_energy,
+            self.diffusivity,
+            self.solution_composition,
+            self.lattice_parameter,
+        )
+        zeldovich_factor = self.compute_zeldovich_factor(
+            self.mean_atomic_volume_precipitate,
+            driving_force,
+            self.surface_energy,
+            self.temperature,
+        )
+        incubation_time = self.compute_incubation_time(
+            condensation_rate, zeldovich_factor
+        )
+        gibbs_energy = self.compute_gibbs_energy(
+            critical_radius, driving_force, self.surface_energy
+        )
+        nucleus_size = self.compute_nucleus_size(
+            driving_force, self.surface_energy, self.temperature
+        )
+        alpha_parameter = self.compute_alpha_parameter(
+            self.mean_atomic_volume_solution, self.mean_atomic_volume_precipitate
+        )
+        coarsening_radius_constant = self.coarsening_radius_constant
+
         nuclei_rate = self.compute_nuclei_rate(
             self.nucleation_site_density,
-            self.zeldovich_factor,
-            self.condensation_rate,
-            self.gibbs_energy,
-            self.incubation_time,
+            zeldovich_factor,
+            condensation_rate,
+            gibbs_energy,
+            incubation_time,
             self.temperature,
             self.time,
             self.equilibrium_solution_composition,
             self.precipitate_composition,
-            self.alpha_parameter,
-            self.coarsening_radius_constant,
+            alpha_parameter,
+            coarsening_radius_constant,
             self.diffusivity,
             self.mean_radius,
             self.n_precipitates,
-            self.critical_radius,
+            critical_radius,
         )
         growth_rate = self.compute_growth_rate(
             self.diffusivity,
             self.mean_radius,
             self.n_precipitates,
             nuclei_rate,
-            self.nucleus_size,
+            nucleus_size,
             self.precipitate_composition,
             self.solution_composition,
             self.equilibrium_solution_composition,
-            self.alpha_parameter,
-        )
-        self.solution_composition = self.update_solute_fraction(
-            self.total_composition,
-            self.alpha_parameter,
-            self.mean_radius,
-            self.n_precipitates,
-            self.precipitate_composition,
+            alpha_parameter,
         )
 
         # Apply the runge-kutta method to update the mean radius
@@ -787,12 +814,22 @@ class MeanRadius:
 
         self.time = self.time + timestep
 
+        self.solution_composition = self.update_solute_fraction(
+            self.total_composition,
+            alpha_parameter,
+            self.mean_radius,
+            self.n_precipitates,
+            self.precipitate_composition,
+        )
+
         print(f"Mean radius: {self.mean_radius}")
         print(f"Precipitates per unit volume:: {self.n_precipitates}")
         print(f"Time: {self.time}")
         print(f"Solution composition: {self.solution_composition}")
 
-        assert self.mean_radius == 3.89029844e-10, f"Mean radius is {self.mean_radius}"
+        assert (
+            self.mean_radius - 3.89029844e-10
+        ) < 1e-20, f"Mean radius is {self.mean_radius}"
 
         # Append to the evolution arrays
         self.time_evolution.append(self.time)
