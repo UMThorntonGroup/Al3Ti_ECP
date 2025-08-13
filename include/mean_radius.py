@@ -450,73 +450,223 @@ class MeanRadius:
 
         return alpha_parameter
 
-    def compute_precipitation_rate(self):
-        return (
-            self.nucleation_site_density
-            * self.zeldovich_factor
-            * self.condensation_rate
-            * jnp.exp(-self.gibbs_energy / (self.boltzmann_constant * self.temperature))
-            * jnp.exp(-self.incubation_time / self.time)
+    @staticmethod
+    def compute_precipitation_rate(
+        nucleation_site_density,
+        zeldovich_factor,
+        condensation_rate,
+        gibbs_energy,
+        incubation_time,
+        temperature,
+        time,
+        boltzmann_constant=jnp.array([1.380e-23]),
+    ):
+        AssertJAXArray(
+            nucleation_site_density,
+            zeldovich_factor,
+            condensation_rate,
+            gibbs_energy,
+            incubation_time,
+            temperature,
+            time,
+            boltzmann_constant,
+        )
+        AssertAllPositive(
+            nucleation_site_density,
+            zeldovich_factor,
+            condensation_rate,
+            gibbs_energy,
+            incubation_time,
+            temperature,
+            time,
+            boltzmann_constant,
+        )
+        AssertSameSize(
+            nucleation_site_density,
+            zeldovich_factor,
+            condensation_rate,
+            gibbs_energy,
+            incubation_time,
+            temperature,
+            time,
+            boltzmann_constant,
         )
 
-    def compute_growth_rate(self, nuclei_rate):
-        return self.diffusivity / self.mean_radius * self.compute_supersaturation(
-            self.precipitate_composition,
-            self.solution_composition,
-            self.equilibrium_solution_composition,
-            self.alpha_parameter,
-        ) + 1.0 / self.n_precipitates * nuclei_rate * (
-            self.nucleus_size - self.mean_radius
+        precipitate_rate = (
+            nucleation_site_density
+            * zeldovich_factor
+            * condensation_rate
+            * jnp.exp(-gibbs_energy / (boltzmann_constant * temperature))
+            * jnp.exp(-incubation_time / time)
         )
 
-    def compute_coarsening_rate(self):
-        return (
+        pprint(f"Precipitate rate (number/(m^3*s)): {precipitate_rate}", "Info")
+
+        AssertAllPositive(precipitate_rate)
+
+        return precipitate_rate
+
+    @staticmethod
+    def compute_growth_rate(
+        diffusivity,
+        mean_radius,
+        n_precipitates,
+        nuclei_rate,
+        nucleus_size,
+        precipitate_composition,
+        solution_composition,
+        equilibrium_solution_composition,
+        alpha_parameter,
+    ):
+        AssertJAXArray(
+            diffusivity,
+            mean_radius,
+            n_precipitates,
+            nuclei_rate,
+            nucleus_size,
+            precipitate_composition,
+            solution_composition,
+            equilibrium_solution_composition,
+            alpha_parameter,
+        )
+        AssertAllPositive(
+            diffusivity,
+            mean_radius,
+            n_precipitates,
+            nuclei_rate,
+            nucleus_size,
+            mean_radius,
+        )
+        AssertSameSize(
+            diffusivity,
+            mean_radius,
+            n_precipitates,
+            nuclei_rate,
+            nucleus_size,
+            precipitate_composition,
+            solution_composition,
+            equilibrium_solution_composition,
+            alpha_parameter,
+        )
+
+        growth_rate = diffusivity / mean_radius * MeanRadius.compute_supersaturation(
+            precipitate_composition,
+            solution_composition,
+            equilibrium_solution_composition,
+            alpha_parameter,
+        ) + 1.0 / n_precipitates * nuclei_rate * (nucleus_size - mean_radius)
+
+        pprint(f"Growth rate (m/s): {growth_rate}", "Info")
+
+        AssertAllPositive(growth_rate)
+
+        return growth_rate
+
+    @staticmethod
+    def compute_coarsening_rate(
+        equilibrium_solution_composition,
+        alpha_parameter,
+        precipitate_composition,
+        coarsening_radius_constant,
+        diffusivity,
+        mean_radius,
+        n_precipitates,
+    ):
+        AssertJAXArray(
+            equilibrium_solution_composition,
+            alpha_parameter,
+            precipitate_composition,
+            coarsening_radius_constant,
+            diffusivity,
+            mean_radius,
+            n_precipitates,
+        )
+        AssertSameSize(
+            equilibrium_solution_composition,
+            alpha_parameter,
+            precipitate_composition,
+            coarsening_radius_constant,
+            diffusivity,
+            mean_radius,
+            n_precipitates,
+        )
+
+        coarsening_rate = (
             (
                 4.0
                 / 27.0
                 * (
-                    self.equilibrium_solution_composition
+                    equilibrium_solution_composition
                     / (
-                        self.alpha_parameter * self.precipitate_composition
-                        - self.equilibrium_solution_composition
+                        alpha_parameter * precipitate_composition
+                        - equilibrium_solution_composition
                     )
                 )
             )
-            * (self.coarsening_radius_constant * self.diffusivity / self.mean_radius**3)
+            * (coarsening_radius_constant * diffusivity / mean_radius**3)
             * (
-                self.coarsening_radius_constant
-                * self.equilibrium_solution_composition
+                coarsening_radius_constant
+                * equilibrium_solution_composition
                 / (
-                    self.mean_radius
-                    * (
-                        self.precipitate_composition
-                        - self.equilibrium_solution_composition
-                    )
+                    mean_radius
+                    * (precipitate_composition - equilibrium_solution_composition)
                 )
-                * (3.0 / (4.0 * jnp.pi * self.mean_radius**3) - self.n_precipitates)
-                - 3.0 * self.n_precipitates
+                * (3.0 / (4.0 * jnp.pi * mean_radius**3) - n_precipitates)
+                - 3.0 * n_precipitates
             )
         )
 
-    def compute_coarsening_fraction(self):
-        if (self.mean_radius < 1.01 * self.critical_radius) and (
-            self.mean_radius > 0.99 * self.critical_radius
+        pprint(f"Coarsening rate (number/(m^3*s)): {coarsening_rate}", "Info")
+
+        return coarsening_rate
+
+    @staticmethod
+    def compute_coarsening_fraction(mean_radius, critical_radius):
+        AssertJAXArray(mean_radius, critical_radius)
+        AssertAllPositive(mean_radius, critical_radius)
+        AssertSameSize(mean_radius, critical_radius)
+
+        coarsening_fraction = 1.0
+        if (mean_radius < 1.01 * critical_radius) and (
+            mean_radius > 0.99 * critical_radius
         ):
-            return 1.0 - 1000.0 * (self.mean_radius / self.critical_radius - 1.0) ** 2
-        else:
-            return 1.0 - jax.scipy.special.erf(
-                4.0 * (self.mean_radius / self.critical_radius - 1.0)
+            coarsening_fraction = (
+                1.0 - 1000.0 * (mean_radius / critical_radius - 1.0) ** 2
             )
+        else:
+            coarsening_fraction = 1.0 - jax.scipy.special.erf(
+                4.0 * (mean_radius / critical_radius - 1.0)
+            )
+
+        pprint(f"Coarsening fraction: {coarsening_fraction}", "Info")
+
+        AssertInclusiveBound(0.0, 1.0, coarsening_fraction)
+
+        return coarsening_fraction
 
     def compute_nuclei_rate(self):
         # Compute the various nucleation and coarsening rates
-        precipitation_rate = self.compute_precipitation_rate()
-        coarsening_rate = self.compute_coarsening_rate()
-        coarsening_fraction = self.compute_coarsening_fraction()
-
-        print(f"Coarsening rate: {coarsening_rate}")
-        print(f"Precipitation rate: {precipitation_rate}")
-        print(f"Coarsening fraction: {coarsening_fraction}")
+        precipitation_rate = self.compute_precipitation_rate(
+            self.nucleation_site_density,
+            self.zeldovich_factor,
+            self.condensation_rate,
+            self.gibbs_energy,
+            self.incubation_time,
+            self.temperature,
+            self.time,
+        )
+        coarsening_rate = self.compute_coarsening_rate(
+            self.equilibrium_solution_composition,
+            self.alpha_parameter,
+            self.precipitate_composition,
+            self.coarsening_radius_constant,
+            self.diffusivity,
+            self.mean_radius,
+            self.n_precipitates,
+        )
+        coarsening_fraction = self.compute_coarsening_fraction(
+            self.mean_radius, self.critical_radius
+        )
 
         # Compute the rate of change of the number of precipitates
         if -coarsening_rate > precipitation_rate:
@@ -526,7 +676,8 @@ class MeanRadius:
 
     def update_solute_fraction(self):
         # This might be getting a lot of round-off error
-        return (
+
+        solute_fraction = (
             self.total_composition
             - self.alpha_parameter
             * 4.0
@@ -545,9 +696,23 @@ class MeanRadius:
             * self.n_precipitates
         )
 
+        pprint(f"Solution fraction: {solute_fraction}", "Info")
+
+        return solute_fraction
+
     def update_mean_radius(self):
         nuclei_rate = self.compute_nuclei_rate()
-        growth_rate = self.compute_growth_rate(nuclei_rate)
+        growth_rate = self.compute_growth_rate(
+            self.diffusivity,
+            self.mean_radius,
+            self.n_precipitates,
+            nuclei_rate,
+            self.nucleus_size,
+            self.precipitate_composition,
+            self.solution_composition,
+            self.equilibrium_solution_composition,
+            self.alpha_parameter,
+        )
         self.solution_composition = self.update_solute_fraction()
 
         # Apply the runge-kutta method to update the mean radius
