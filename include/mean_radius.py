@@ -644,28 +644,63 @@ class MeanRadius:
 
         return coarsening_fraction
 
-    def compute_nuclei_rate(self):
+    @staticmethod
+    def compute_nuclei_rate(
+        nucleation_site_density,
+        zeldovich_factor,
+        condensation_rate,
+        gibbs_energy,
+        incubation_time,
+        temperature,
+        time,
+        equilibrium_solution_composition,
+        precipitate_composition,
+        alpha_parameter,
+        coarsening_radius_constant,
+        diffusivity,
+        mean_radius,
+        n_precipitates,
+        critical_radius,
+    ):
+        AssertJAXArray(
+            nucleation_site_density,
+            zeldovich_factor,
+            condensation_rate,
+            gibbs_energy,
+            incubation_time,
+            temperature,
+            time,
+            equilibrium_solution_composition,
+            precipitate_composition,
+            alpha_parameter,
+            coarsening_radius_constant,
+            diffusivity,
+            mean_radius,
+            n_precipitates,
+            critical_radius,
+        )
+
         # Compute the various nucleation and coarsening rates
-        precipitation_rate = self.compute_precipitation_rate(
-            self.nucleation_site_density,
-            self.zeldovich_factor,
-            self.condensation_rate,
-            self.gibbs_energy,
-            self.incubation_time,
-            self.temperature,
-            self.time,
+        precipitation_rate = MeanRadius.compute_precipitation_rate(
+            nucleation_site_density,
+            zeldovich_factor,
+            condensation_rate,
+            gibbs_energy,
+            incubation_time,
+            temperature,
+            time,
         )
-        coarsening_rate = self.compute_coarsening_rate(
-            self.equilibrium_solution_composition,
-            self.alpha_parameter,
-            self.precipitate_composition,
-            self.coarsening_radius_constant,
-            self.diffusivity,
-            self.mean_radius,
-            self.n_precipitates,
+        coarsening_rate = MeanRadius.compute_coarsening_rate(
+            equilibrium_solution_composition,
+            alpha_parameter,
+            precipitate_composition,
+            coarsening_radius_constant,
+            diffusivity,
+            mean_radius,
+            n_precipitates,
         )
-        coarsening_fraction = self.compute_coarsening_fraction(
-            self.mean_radius, self.critical_radius
+        coarsening_fraction = MeanRadius.compute_coarsening_fraction(
+            mean_radius, critical_radius
         )
 
         # Compute the rate of change of the number of precipitates
@@ -674,26 +709,33 @@ class MeanRadius:
         else:
             return precipitation_rate
 
-    def update_solute_fraction(self):
+    @staticmethod
+    def update_solute_fraction(
+        total_composition,
+        alpha_parameter,
+        mean_radius,
+        n_precipitates,
+        precipitate_composition,
+    ):
+        AssertJAXArray(
+            total_composition,
+            alpha_parameter,
+            mean_radius,
+            n_precipitates,
+            precipitate_composition,
+        )
         # This might be getting a lot of round-off error
-
         solute_fraction = (
-            self.total_composition
-            - self.alpha_parameter
+            total_composition
+            - alpha_parameter
             * 4.0
             / 3.0
             * jnp.pi
-            * self.mean_radius**3
-            * self.n_precipitates
-            * self.precipitate_composition
+            * mean_radius**3
+            * n_precipitates
+            * precipitate_composition
         ) / (
-            1.0
-            - self.alpha_parameter
-            * 4.0
-            / 3.0
-            * jnp.pi
-            * self.mean_radius**3
-            * self.n_precipitates
+            1.0 - alpha_parameter * 4.0 / 3.0 * jnp.pi * mean_radius**3 * n_precipitates
         )
 
         pprint(f"Solution fraction: {solute_fraction}", "Info")
@@ -701,7 +743,23 @@ class MeanRadius:
         return solute_fraction
 
     def update_mean_radius(self):
-        nuclei_rate = self.compute_nuclei_rate()
+        nuclei_rate = self.compute_nuclei_rate(
+            self.nucleation_site_density,
+            self.zeldovich_factor,
+            self.condensation_rate,
+            self.gibbs_energy,
+            self.incubation_time,
+            self.temperature,
+            self.time,
+            self.equilibrium_solution_composition,
+            self.precipitate_composition,
+            self.alpha_parameter,
+            self.coarsening_radius_constant,
+            self.diffusivity,
+            self.mean_radius,
+            self.n_precipitates,
+            self.critical_radius,
+        )
         growth_rate = self.compute_growth_rate(
             self.diffusivity,
             self.mean_radius,
@@ -713,7 +771,13 @@ class MeanRadius:
             self.equilibrium_solution_composition,
             self.alpha_parameter,
         )
-        self.solution_composition = self.update_solute_fraction()
+        self.solution_composition = self.update_solute_fraction(
+            self.total_composition,
+            self.alpha_parameter,
+            self.mean_radius,
+            self.n_precipitates,
+            self.precipitate_composition,
+        )
 
         # Apply the runge-kutta method to update the mean radius
         timestep = 0.1
